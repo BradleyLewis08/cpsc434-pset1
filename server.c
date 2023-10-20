@@ -7,10 +7,18 @@
 
 #define PORT 8080
 
+void handle_request(char *buffer, int client_fd)
+{
+	char *response = "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 12\n\nHello world!";
+
+	write(client_fd, response, strlen(response));
+	close(client_fd);
+}
+
 int main(int argc, char const *argv[])
 {
 	struct sockaddr_in address;
-	int socket_fd, new_socket, valread;
+	int socket_fd, valread;
 
 	int opt = 1;
 	int addrlen = sizeof(address);
@@ -49,15 +57,20 @@ int main(int argc, char const *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	// Accept incoming connections
-	if ((new_socket = accept(socket_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
+	while (1) // TODO: Multithreading to handle multiple clients
 	{
-		perror("failed to accept connection");
-		exit(EXIT_FAILURE);
-	}
+		// Accept incoming connections
+		int client_fd;
+		if ((client_fd = accept(socket_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0)
+		{
+			perror("failed to accept connection");
+			exit(EXIT_FAILURE);
+		}
 
-	// Read incoming message and print it
-	char buffer[1024] = {0};
-	valread = read(new_socket, buffer, 1024);
-	printf("%s\n", buffer);
+		// Read incoming message and print it
+		char buffer[1024] = {0};
+		valread = read(client_fd, buffer, 1024);
+
+		handle_request(buffer, client_fd);
+	}
 }
