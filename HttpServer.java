@@ -44,6 +44,63 @@ public class HttpServer {
 
         return request;
     }
+
+    public void sendResponse(Socket clientSocket, HttpResponse response) throws IOException {
+        // response.send(clientSocket.getOutputStream());
+        OutputStream out = clientSocket.getOutputStream();
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out));
+
+        // Write the status line
+        writer.write(response.getVersion() + " " + response.getStatusCode() + " " + response.getStatusMessage());
+        writer.newLine();
+
+        // Write the headers
+        for (Map.Entry<String, String> entry : response.getHeaders().entrySet()) {
+            writer.write(entry.getKey() + ": " + entry.getValue());
+            writer.newLine();
+        }
+
+        // Blank line
+        writer.newLine();
+        writer.flush();
+
+        // Write the body
+        if(response.getBody() != null){
+            writer.write(response.getBody());
+            writer.flush();
+        }
+    }
+    
+    public HttpResponse generateResponse(HttpRequest request) throws IOException {
+        HttpResponse response = new HttpResponse();
+
+        // handle GET request
+        if(request.getMethod().equalsIgnoreCase("GET")){
+            //temporarily just return Hello World
+            response.setStatusCode(200);
+            response.setStatusMessage("OK");
+            response.setContentLength("12");
+            response.setContentTypeHeader("text/plain");
+            response.setBody("Hello World!");
+
+            // Map<String, String> headers = request.getHeaders();
+            // // handle GET request
+            // if (request.getPath().equals('/')){
+            //     response.setContentLength(headers.get("Content-Length"));
+            //     response.setContentTypeHeader(headers.get("Content-Type"));
+            //     response.setDateHeader();
+            // }
+
+        }
+        else {
+            //handle other requests
+            
+        }
+
+        return response;
+
+    }
+
     public static void main(String[] args) throws IOException {
         //create new server and client sockets
         ServerSocket serverSocket = new ServerSocket(PORT);
@@ -67,6 +124,10 @@ public class HttpServer {
                     }
                     if(request.getBody() != null) System.out.println(request.getBody());
                 }
+
+                HttpResponse response = server.generateResponse(request);
+
+                server.sendResponse(clientSocket, response);
 
                 // TODO - Multi-threading to handle multiple clients
                 //create new thread for each client
