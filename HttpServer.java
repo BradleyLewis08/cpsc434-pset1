@@ -1,5 +1,6 @@
 import java.io.*;
 import java.net.*;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class HttpServer {
@@ -79,6 +80,8 @@ public class HttpServer {
             //temporarily just return Hello World
             response.setStatusCode(200);
             response.setStatusMessage("OK");
+            response.setDateHeader();
+            response.setServerHeader("myserver");
             response.setContentLength("12");
             response.setContentTypeHeader("text/plain");
             response.setBody("Hello World!");
