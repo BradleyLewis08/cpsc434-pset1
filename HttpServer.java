@@ -4,35 +4,6 @@ import java.util.*;
 
 public class HttpServer {
 
-    public class HttpRequest {
-        private String method;
-        private String path;
-        private String version;
-        private Map<String, String> headers = new HashMap<>();
-        private String body;
-
-        public void setMethod(String method){
-            this.method = method;
-        }
-
-        public void setPath(String path){
-            this.path = path;
-        }
-
-        public void setVersion(String version){
-            this.version = version;
-        }
-
-        public void setHeaders(Map<String, String> headers){
-            this.headers = headers;
-        }
-
-        public void setBody(String body){
-            this.body = body;
-        }
-        
-    }
-
     private static final int PORT = 8080;
     private static final boolean debug = true;
 
@@ -90,11 +61,11 @@ public class HttpServer {
 
                 // Print request to console
                 if(debug){
-                    System.out.println("Request: " + request.method + " " + request.path + " " + request.version);
-                    for (Map.Entry<String, String> entry : request.headers.entrySet()) {
+                    System.out.println("Request: " + request.getMethod() + " " + request.getPath() + " " + request.getVersion());
+                    for (Map.Entry<String, String> entry : request.getHeaders().entrySet()) {
                         System.out.println(entry.getKey() + ": " + entry.getValue());
                     }
-                    if(request.body != null) System.out.println(request.body);
+                    if(request.getBody() != null) System.out.println(request.getBody());
                 }
 
                 // TODO - Multi-threading to handle multiple clients
