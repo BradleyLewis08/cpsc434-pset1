@@ -7,11 +7,17 @@
 
 ## Getting started
 
-Run the following command to start the server:
+The shell script HttpServer.sh will compile and run the server. The server will run on port 8080.
+
+To make the script executable, run the following command:
 
 ```
-make server
-./server
+chmod +x HttpServer.sh
+```
+
+Then, simply run the following command (shell script) to start the server:
+```
+./HttpServer.sh
 ```
 
 Once the server is running, you can test the server using `telnet`:
