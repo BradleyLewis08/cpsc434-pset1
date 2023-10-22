@@ -92,6 +92,7 @@ public class HttpResponse {
         response.setBody(content);
         response.setLastModifiedHeader(lastModified);
         response.setContentTypeHeader(mimeType);
+        response.setContentLength(String.valueOf(content.length));
         return response;
     }
 
