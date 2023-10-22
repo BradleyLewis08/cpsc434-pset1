@@ -56,6 +56,6 @@ public class HttpRequest {
         if (i > 0) {
             return path.substring(i + 1);
         }
-        return null;
+        return "";
     }
 }

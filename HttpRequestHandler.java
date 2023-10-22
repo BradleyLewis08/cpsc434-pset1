@@ -281,23 +281,10 @@ public class HttpRequestHandler implements Runnable {
 			ProcessBuilder pb = new ProcessBuilder(cgiFile.getAbsolutePath());
 			Map<String, String> env = pb.environment();
 
-			// Validate query string
-
-			if (request.getQueryString() == null) {
-				return HttpResponse.badRequest();
-			}
-
 			env.put("QUERY_STRING", request.getQueryString());
 			env.put("REQUEST_METHOD", request.getMethod());
 
 			Process process = pb.start();
-
-			// If the request is POST, write the request body to the CGI script's STDIN
-			if ("POST".equalsIgnoreCase(request.getMethod()) && request.getBody() != null) {
-				try (OutputStream cgiInput = process.getOutputStream()) {
-					cgiInput.write(request.getBody().getBytes(StandardCharsets.UTF_8));
-				}
-			}
 
 			// Get the output from the CGI script
 			byte[] outputBytes;
