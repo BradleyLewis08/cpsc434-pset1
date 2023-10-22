@@ -6,7 +6,7 @@ public class HttpResponse {
     private int statusCode;
     private String statusMessage;
     private Map<String, String> headers = new HashMap<>();
-    private String body;
+    private byte[] body;
     // private byte[] body;
 
     public String getVersion() {
@@ -25,7 +25,7 @@ public class HttpResponse {
         return this.headers;
     }
 
-    public String getBody() {
+    public byte[] getBody() {
         return this.body;
     }
 
@@ -66,7 +66,7 @@ public class HttpResponse {
         headers.put("Last-Modified", formattedDate);
     }
 
-    public void setBody(String body) {
+    public void setBody(byte[] body) {
         this.body = body;
     }
 
@@ -76,4 +76,69 @@ public class HttpResponse {
     public void setTransferEncodingHeader(String transferEncoding) {
         headers.put("Transfer-Encoding", transferEncoding);
     }
+
+    public static void setCommonHeaders(HttpResponse response) {
+        response.setDateHeader();
+        // TODO: Add more
+    }
+
+    // ------------------ Response Factories ------------------
+
+    public static HttpResponse ok(byte[] content, long lastModified, String mimeType) {
+        HttpResponse response = new HttpResponse();
+        setCommonHeaders(response);
+        response.setStatusCode(200);
+        response.setStatusMessage("OK");
+        response.setBody(content);
+        response.setLastModifiedHeader(lastModified);
+        response.setContentTypeHeader(mimeType);
+        return response;
+    }
+
+    public static HttpResponse notModified() {
+        HttpResponse response = new HttpResponse();
+        response.setStatusCode(304);
+        response.setStatusMessage("Not Modified");
+        return response;
+    }
+
+    public static HttpResponse badRequest() {
+        HttpResponse response = new HttpResponse();
+        response.setStatusCode(400);
+        response.setStatusMessage("Bad Request");
+        return response;
+    }
+
+    public static HttpResponse forbidden() {
+        HttpResponse response = new HttpResponse();
+        setCommonHeaders(response);
+        response.setStatusCode(403);
+        response.setStatusMessage("Forbidden");
+        return response;
+    }
+
+    public static HttpResponse notFound() {
+        HttpResponse response = new HttpResponse();
+        setCommonHeaders(response);
+        response.setStatusCode(404);
+        response.setStatusMessage("Not Found");
+        return response;
+    }
+
+    public static HttpResponse notAcceptable() {
+        HttpResponse response = new HttpResponse();
+        setCommonHeaders(response);
+        response.setStatusCode(406);
+        response.setStatusMessage("Not Acceptable");
+        return response;
+    }
+
+    public static HttpResponse internalServerError() {
+        HttpResponse response = new HttpResponse();
+        setCommonHeaders(response);
+        response.setStatusCode(500);
+        response.setStatusMessage("Internal Server Error");
+        return response;
+    }
+
 }

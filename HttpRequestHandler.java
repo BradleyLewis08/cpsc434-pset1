@@ -29,6 +29,7 @@ public class HttpRequestHandler implements Runnable {
 													// search for index.html before returning 404
 
 	Date ifModifiedSinceDate = null;
+	List<String> acceptedMimeTypes = new ArrayList<>();
 
 	public HttpRequestHandler(Socket clientSocket, String rootDirectory, Map<String, String> virtualHostMap) {
 		this.clientSocket = clientSocket;
@@ -121,6 +122,16 @@ public class HttpRequestHandler implements Runnable {
 				}
 			}
 
+			if (headers.containsKey(ACCEPT_HEADER)) {
+				String acceptHeader = headers.get(ACCEPT_HEADER);
+				// Create a list of accepted mime types
+				String[] acceptParts = acceptHeader.split(",");
+				for (String acceptPart : acceptParts) {
+					String[] acceptPartParts = acceptPart.split(";");
+					acceptedMimeTypes.add(acceptPartParts[0].trim());
+				}
+			}
+
 			// Map the request to a HttpRequest object
 			HttpRequest request = new HttpRequest();
 			request.setMethod(method);
@@ -168,40 +179,30 @@ public class HttpRequestHandler implements Runnable {
 		String pathName = rootDirectory.endsWith("/") ? rootDirectory + url : rootDirectory + "/" + url;
 
 		if (isFileBeyondRoot(pathName)) {
-			response.setStatusCode(403);
-			response.setStatusMessage("Forbidden");
-			response.setBody("<h1>403 Forbidden</h1>");
-			return response;
+			return HttpResponse.forbidden();
 		}
 
 		File requestedFile = getFileIfExists(pathName);
 		if (requestedFile == null) {
-			response.setStatusCode(404);
-			response.setStatusMessage("Not Found");
-			response.setBody("<h1>404 Not Found</h1>");
+			return HttpResponse.notFound();
 		} else {
 			// Check if the file has been modified since the If-Modified-Since header
 			long lastModified = requestedFile.lastModified();
 			if (ifModifiedSinceDate != null && lastModified <= ifModifiedSinceDate.getTime()) {
-				response.setStatusCode(304);
-				response.setStatusMessage("Not Modified");
-				return response;
+				return HttpResponse.notModified();
 			}
-			response.setStatusCode(200);
-			response.setStatusMessage("OK");
 			try {
-				// TODO: Handle different MIME types
-				String content = new String(Files.readAllBytes(requestedFile.toPath()), StandardCharsets.UTF_8);
-				response.setBody(content);
-				response.setLastModifiedHeader(lastModified);
+				byte[] data = Files.readAllBytes(requestedFile.toPath());
+				String mimeType = MimeTypeResolver.getMimeType(requestedFile.getName());
+				// Strict adherence to Accept header
+				if (!acceptedMimeTypes.isEmpty() && !acceptedMimeTypes.contains(mimeType)) {
+					return HttpResponse.notAcceptable();
+				}
+				return HttpResponse.ok(data, lastModified, mimeType);
 			} catch (IOException e) {
-				response.setStatusCode(500);
-				response.setStatusMessage("Internal Server Error");
-				response.setBody("<h1>500 Internal Server Error</h1>");
+				return HttpResponse.internalServerError();
 			}
 		}
-		response.setDateHeader();
-		return response;
 	}
 
 	public HttpResponse constructResponse(HttpRequest request) {
@@ -212,9 +213,7 @@ public class HttpRequestHandler implements Runnable {
 		if (url.startsWith("/")) {
 			url = url.substring(1);
 		}
-		setResponseContent(url, response);
-		response.setDateHeader();
-		return response;
+		return setResponseContent(url, response);
 	}
 
 	@Override
@@ -252,8 +251,8 @@ public class HttpRequestHandler implements Runnable {
 
 			// Write the body
 			if (response.getBody() != null) {
-				writer.write(response.getBody());
-				writer.flush();
+				out.write(response.getBody());
+				out.flush();
 			}
 		} catch (Exception e) {
 			System.out.println("Error sending response: " + e.getMessage());

@@ -16,6 +16,7 @@ chmod +x HttpServer.sh
 ```
 
 Then, simply run the following command (shell script) to start the server:
+
 ```
 ./HttpServer.sh
 ```
@@ -25,3 +26,7 @@ Once the server is running, you can test the server using `telnet`:
 `telnet localhost 8080`
 
 Once telnet connects, you can send any message and it should respond back with a `200 OK` message.
+
+## Content Type
+
+When there is a conflict between the Mime Type of the requested resource and the server-side resource, we elect to ignore the 'Accept' header and return the server-side resource in its original format for simplicity's sake. A more developed implementation may attempt content transformation here.
