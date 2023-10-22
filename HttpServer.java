@@ -4,6 +4,7 @@ import java.util.*;
 
 public class HttpServer {
 
+    private static boolean debug = true;
     private static int port = 8080;
     private static int cacheSize = 0;
 
@@ -46,12 +47,13 @@ public class HttpServer {
         ServerSocket serverSocket = new ServerSocket(port);
         System.out.println("Server listening at: " + port);
 
-        // printConfig();
+        if (debug) {
+            printConfig();
+        }
 
         while (true) {
             try {
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("Client request: " + clientSocket.getInetAddress().getHostAddress());
 
                 // Handle incoming request
                 HttpRequestHandler requestHandlerTask = new HttpRequestHandler(clientSocket, defaultRootDirectory,

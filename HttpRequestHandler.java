@@ -4,6 +4,7 @@ import java.util.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.regex.*;
+import java.text.SimpleDateFormat;
 
 public class HttpRequestHandler implements Runnable {
 
@@ -12,9 +13,22 @@ public class HttpRequestHandler implements Runnable {
 	private boolean closeConnectionAfterResponse = false; // Default to keep-alive Connection
 	private Map<String, String> virtualHostMap = new HashMap<>(); // Map of serverName to rootDirectory
 
+	// Header Constants
+
+	private static final String HOST_HEADER = "Host";
+	private static final String ACCEPT_HEADER = "Accept";
+	private static final String USER_AGENT_HEADER = "User-Agent";
+	private static final String IF_MODIFIED_SINCE_HEADER = "If-Modified-Since";
+	private static final String CONNECTION_HEADER = "Connection";
+	private static final String AUTHORIZATION_HEADER = "Authorization";
+
+	private static final String CONTENT_LENGTH_HEADER = "Content-Length";
+
 	private boolean mobileRequest = false; // Is the request from a mobile device?
 	private boolean fetchMobileFallback = false; // If URL is not specified for mobile device, we should fallback to
 													// search for index.html before returning 404
+
+	Date ifModifiedSinceDate = null;
 
 	public HttpRequestHandler(Socket clientSocket, String rootDirectory, Map<String, String> virtualHostMap) {
 		this.clientSocket = clientSocket;
@@ -68,22 +82,22 @@ public class HttpRequestHandler implements Runnable {
 
 			// Parse the body if it exists
 			String body = null;
-			if (headers.containsKey("Content-Length")) {
-				int contentLength = Integer.parseInt(headers.get("Content-Length"));
+			if (headers.containsKey(CONTENT_LENGTH_HEADER)) {
+				int contentLength = Integer.parseInt(headers.get(CONTENT_LENGTH_HEADER));
 				char[] bodyChars = new char[contentLength];
 				in.read(bodyChars, 0, contentLength);
 				body = new String(bodyChars);
 			}
 
-			if (headers.containsKey("Connection")) {
-				String connectionHeader = headers.get("Connection");
+			if (headers.containsKey(CONNECTION_HEADER)) {
+				String connectionHeader = headers.get(CONNECTION_HEADER);
 				if (connectionHeader.equals("close")) {
 					closeConnectionAfterResponse = true;
 				}
 			}
 
-			if (headers.containsKey("Host")) {
-				String hostHeader = headers.get("Host");
+			if (headers.containsKey(HOST_HEADER)) {
+				String hostHeader = headers.get(HOST_HEADER);
 				String[] hostParts = hostHeader.split(":");
 				String serverName = hostParts[0];
 				if (virtualHostMap.containsKey(serverName)) {
@@ -91,9 +105,20 @@ public class HttpRequestHandler implements Runnable {
 				}
 			}
 
-			if (headers.containsKey("User-Agent")) {
-				String userAgentHeader = headers.get("User-Agent");
+			if (headers.containsKey(USER_AGENT_HEADER)) {
+				String userAgentHeader = headers.get(USER_AGENT_HEADER);
 				maybeSetMobileRequest(userAgentHeader);
+			}
+
+			if (headers.containsKey(IF_MODIFIED_SINCE_HEADER)) {
+				SimpleDateFormat format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US);
+				format.setTimeZone(TimeZone.getTimeZone("GMT"));
+				try {
+					ifModifiedSinceDate = format.parse(headers.get(IF_MODIFIED_SINCE_HEADER));
+				} catch (Exception e) {
+					// Ignore the header if it is malformed
+					System.out.println("Error parsing date, ignoring If-Modified-Since header " + e.getMessage());
+				}
 			}
 
 			// Map the request to a HttpRequest object
@@ -142,9 +167,6 @@ public class HttpRequestHandler implements Runnable {
 
 		String pathName = rootDirectory.endsWith("/") ? rootDirectory + url : rootDirectory + "/" + url;
 
-		// Uncomment when debugging locally to use relative paths - maybe TODO?
-		// pathName = pathName.substring(1);
-
 		if (isFileBeyondRoot(pathName)) {
 			response.setStatusCode(403);
 			response.setStatusMessage("Forbidden");
@@ -158,12 +180,20 @@ public class HttpRequestHandler implements Runnable {
 			response.setStatusMessage("Not Found");
 			response.setBody("<h1>404 Not Found</h1>");
 		} else {
+			// Check if the file has been modified since the If-Modified-Since header
+			long lastModified = requestedFile.lastModified();
+			if (ifModifiedSinceDate != null && lastModified <= ifModifiedSinceDate.getTime()) {
+				response.setStatusCode(304);
+				response.setStatusMessage("Not Modified");
+				return response;
+			}
 			response.setStatusCode(200);
 			response.setStatusMessage("OK");
 			try {
 				// TODO: Handle different MIME types
 				String content = new String(Files.readAllBytes(requestedFile.toPath()), StandardCharsets.UTF_8);
 				response.setBody(content);
+				response.setLastModifiedHeader(lastModified);
 			} catch (IOException e) {
 				response.setStatusCode(500);
 				response.setStatusMessage("Internal Server Error");
