@@ -32,6 +32,10 @@ public class HttpRequest {
     }
 
     public String getPath() {
+        int i = path.indexOf('?');
+        if (i > 0) { // if there is a query string
+            return path.substring(0, i);
+        }
         return this.path;
     }
 
@@ -47,4 +51,11 @@ public class HttpRequest {
         return this.body;
     }
 
+    public String getQueryString() {
+        int i = path.indexOf('?');
+        if (i > 0) {
+            return path.substring(i + 1);
+        }
+        return null;
+    }
 }

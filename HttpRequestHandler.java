@@ -167,8 +167,12 @@ public class HttpRequestHandler implements Runnable {
 		return requestedFile;
 	}
 
+	public boolean isMimeTypeAccepted(String mimeType) {
+		return acceptedMimeTypes.isEmpty() || acceptedMimeTypes.contains(mimeType);
+	}
+
 	// URL is guaranteed to be relative path here
-	public HttpResponse setResponseContent(String url, HttpResponse response) {
+	public HttpResponse setResponseContent(String url, HttpResponse response, HttpRequest request) {
 		// Handle some defaults here
 		if (url.equals("") || url.endsWith("/")) {
 			if (mobileRequest) {
@@ -189,6 +193,14 @@ public class HttpRequestHandler implements Runnable {
 		if (requestedFile == null) {
 			return HttpResponse.notFound();
 		} else {
+			// We now check if the file is a CGI script
+			if (requestedFile.getName().endsWith(".cgi")) {
+				// First check if the client can accept text/html
+				if (!isMimeTypeAccepted("text/html")) {
+					return HttpResponse.notAcceptable();
+				}
+				return handleCGIRequest(requestedFile, request);
+			}
 			// Check if the file has been modified since the If-Modified-Since header
 			long lastModified = requestedFile.lastModified();
 			if (ifModifiedSinceDate != null && lastModified <= ifModifiedSinceDate.getTime()) {
@@ -198,7 +210,7 @@ public class HttpRequestHandler implements Runnable {
 				byte[] data = Files.readAllBytes(requestedFile.toPath());
 				String mimeType = MimeTypeResolver.getMimeType(requestedFile.getName());
 				// Strict adherence to Accept header
-				if (!acceptedMimeTypes.isEmpty() && !acceptedMimeTypes.contains(mimeType)) {
+				if (!isMimeTypeAccepted(mimeType)) {
 					return HttpResponse.notAcceptable();
 				}
 				return HttpResponse.ok(data, lastModified, mimeType);
@@ -216,7 +228,7 @@ public class HttpRequestHandler implements Runnable {
 		if (url.startsWith("/")) {
 			url = url.substring(1);
 		}
-		return setResponseContent(url, response);
+		return setResponseContent(url, response, request);
 	}
 
 	@Override
@@ -261,6 +273,54 @@ public class HttpRequestHandler implements Runnable {
 			}
 		} catch (Exception e) {
 			System.out.println("Error sending response: " + e.getMessage());
+		}
+	}
+
+	public HttpResponse handleCGIRequest(File cgiFile, HttpRequest request) {
+		try {
+			ProcessBuilder pb = new ProcessBuilder(cgiFile.getAbsolutePath());
+			Map<String, String> env = pb.environment();
+
+			// Validate query string
+
+			if (request.getQueryString() == null) {
+				return HttpResponse.badRequest();
+			}
+
+			env.put("QUERY_STRING", request.getQueryString());
+			env.put("REQUEST_METHOD", request.getMethod());
+
+			Process process = pb.start();
+
+			// If the request is POST, write the request body to the CGI script's STDIN
+			if ("POST".equalsIgnoreCase(request.getMethod()) && request.getBody() != null) {
+				try (OutputStream cgiInput = process.getOutputStream()) {
+					cgiInput.write(request.getBody().getBytes(StandardCharsets.UTF_8));
+				}
+			}
+
+			// Get the output from the CGI script
+			byte[] outputBytes;
+
+			try (InputStream cgiOutput = process.getInputStream()) {
+				InputStream errorStream = process.getErrorStream();
+				if (errorStream.available() > 0) {
+					return HttpResponse.internalServerError();
+				}
+				outputBytes = cgiOutput.readAllBytes();
+			}
+
+			int exitCode = process.waitFor();
+
+			// Check if the CGI script returned an error
+			if (exitCode != 0) {
+				return HttpResponse.internalServerError();
+			}
+
+			return HttpResponse.ok(outputBytes, cgiFile.lastModified(), "text/html");
+		} catch (Exception e) {
+			System.out.println("Error handling CGI request: " + e.getMessage());
+			return HttpResponse.internalServerError();
 		}
 	}
 }
