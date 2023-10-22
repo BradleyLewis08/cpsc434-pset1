@@ -10,7 +10,7 @@ public class HttpRequestHandler implements Runnable {
 
 	private Socket clientSocket;
 	private String rootDirectory;
-	private boolean closeConnectionAfterResponse = false; // Default to keep-alive Connection
+	private boolean keepConnectionOpen = false; // Default to close
 	private Map<String, String> virtualHostMap = new HashMap<>(); // Map of serverName to rootDirectory
 
 	// Header Constants
@@ -69,6 +69,7 @@ public class HttpRequestHandler implements Runnable {
 			BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
 			String requestLine = in.readLine();
 			String[] requestParts = requestLine.split(" ");
+			System.out.println("Request parts " + requestParts);
 			String method = requestParts[0];
 			String path = maybeRemoveLeadingSlash(requestParts[1]);
 			String version = requestParts[2];
@@ -92,8 +93,10 @@ public class HttpRequestHandler implements Runnable {
 
 			if (headers.containsKey(CONNECTION_HEADER)) {
 				String connectionHeader = headers.get(CONNECTION_HEADER);
-				if (connectionHeader.equals("close")) {
-					closeConnectionAfterResponse = true;
+				if (connectionHeader.equals("keep-alive")) {
+					keepConnectionOpen = true;
+				} else if (connectionHeader.equals("close")) {
+					keepConnectionOpen = false;
 				}
 			}
 
@@ -219,12 +222,14 @@ public class HttpRequestHandler implements Runnable {
 	@Override
 	public void run() {
 		try {
-			HttpRequest request = constructRequest();
-			HttpResponse response = constructResponse(request);
-			sendResponse(response);
-			if (closeConnectionAfterResponse) {
-				clientSocket.close();
-			}
+			do {
+				HttpRequest request = constructRequest();
+				HttpResponse response = constructResponse(request);
+				sendResponse(response);
+				if (!keepConnectionOpen) {
+					clientSocket.close();
+				}
+			} while (keepConnectionOpen);
 		} catch (Exception e) {
 			System.out.println("Error handling request: " + e.getMessage());
 		}
