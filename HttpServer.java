@@ -4,47 +4,17 @@ import java.util.*;
 
 public class HttpServer {
 
-    static class VirtualHost {
-        String serverName;
-        String rootDirectory;
-    }
-
-    private static int PORT = 8080;
-    private static final boolean debug = true;
+    private static int port = 8080;
+    private static int cacheSize = 0;
 
     private static Map<String, String> virtualHostMaps = new HashMap<>(); // Map of serverName to rootDirectory
     static String defaultRootDirectory = null;
 
-    public static void config(String configFilePath) throws IOException {
-        BufferedReader reader = new BufferedReader(new FileReader(configFilePath));
-        String line;
-
-        VirtualHost currVirtualHost = null;
-
-        while ((line = reader.readLine()) != null) {
-            line = line.trim();
-
-            if (line.startsWith("#") || line.isEmpty()) { // Skip comments
-                continue;
-            }
-            if (line.startsWith("Listen")) {
-                PORT = Integer.parseInt(line.split(" ")[1]);
-            } else if (line.startsWith("<VirtualHost")) {
-                currVirtualHost = new VirtualHost();
-            } else if (line.startsWith("DocumentRoot") && currVirtualHost != null) {
-                currVirtualHost.rootDirectory = line.split(" ")[1];
-            } else if (line.startsWith("ServerName") && currVirtualHost != null) {
-                currVirtualHost.serverName = line.split(" ")[1];
-            } else if (line.startsWith("</VirtualHost>") && currVirtualHost != null) {
-                // Add to map
-                virtualHostMaps.put(currVirtualHost.serverName, currVirtualHost.rootDirectory);
-                // Set default virtual host
-                if (defaultRootDirectory == null) {
-                    defaultRootDirectory = currVirtualHost.rootDirectory;
-                }
-                currVirtualHost = null;
-            }
-        }
+    private static void printConfig() {
+        System.out.println("port: " + port);
+        System.out.println("cacheSize: " + cacheSize);
+        System.out.println("defaultRootDirectory: " + defaultRootDirectory);
+        System.out.println("virtualHostMaps: " + virtualHostMaps);
     }
 
     public static void main(String[] args) throws IOException {
@@ -55,14 +25,31 @@ public class HttpServer {
             System.exit(1);
         }
 
-        config(args[1]);
+        ConfigParser configParser = new ConfigParser(args[1]);
+        ServerConfig serverConfig = null;
 
-        ServerSocket serverSocket = new ServerSocket(PORT);
-        System.out.println("Server listening at: " + PORT);
+        try {
+            serverConfig = configParser.parseConfig();
+        } catch (InvalidConfigException e) {
+            System.out.println("Invalid config: " + e);
+            System.exit(1);
+        } catch (Exception e) {
+            System.out.println("Error reading config file: " + e);
+            System.exit(1);
+        }
+
+        port = serverConfig.getPort();
+        virtualHostMaps = serverConfig.getVirtualHosts();
+        defaultRootDirectory = serverConfig.getDefaultRootDirectory();
+        cacheSize = serverConfig.getCacheSize();
+
+        ServerSocket serverSocket = new ServerSocket(port);
+        System.out.println("Server listening at: " + port);
+
+        // printConfig();
 
         while (true) {
             try {
-                // Accepts incoming connections - TODO - multi-threading
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("Client request: " + clientSocket.getInetAddress().getHostAddress());
 

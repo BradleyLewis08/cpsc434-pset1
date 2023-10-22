@@ -3,17 +3,22 @@ import java.net.*;
 import java.util.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.regex.*;
 
 public class HttpRequestHandler implements Runnable {
 
 	private Socket clientSocket;
-	private String contentRoot;
+	private String rootDirectory;
 	private boolean closeConnectionAfterResponse = false; // Default to keep-alive Connection
 	private Map<String, String> virtualHostMap = new HashMap<>(); // Map of serverName to rootDirectory
 
-	public HttpRequestHandler(Socket clientSocket, String contentRoot, Map<String, String> virtualHostMap) {
+	private boolean mobileRequest = false; // Is the request from a mobile device?
+	private boolean fetchMobileFallback = false; // If URL is not specified for mobile device, we should fallback to
+													// search for index.html before returning 404
+
+	public HttpRequestHandler(Socket clientSocket, String rootDirectory, Map<String, String> virtualHostMap) {
 		this.clientSocket = clientSocket;
-		this.contentRoot = contentRoot;
+		this.rootDirectory = rootDirectory;
 		this.virtualHostMap = virtualHostMap;
 	}
 
@@ -24,14 +29,23 @@ public class HttpRequestHandler implements Runnable {
 		return path;
 	}
 
+	private void maybeSetMobileRequest(String userAgent) {
+		Pattern MOBILE_PATTERN = Pattern.compile(".*(iPhone|Android|Mobile|webOS).*", Pattern.CASE_INSENSITIVE);
+		Matcher matcher = MOBILE_PATTERN.matcher(userAgent);
+
+		if (matcher.matches()) {
+			mobileRequest = true;
+		}
+	}
+
 	private boolean isFileBeyondRoot(String path) {
 		try {
-			String docRoot = new File(contentRoot).getCanonicalPath();
+			String docRoot = new File(rootDirectory).getCanonicalPath();
 			String requestedFile = new File(docRoot, path).getCanonicalPath();
 			return !requestedFile.startsWith(docRoot);
 		} catch (IOException e) {
 			System.out.println("Error checking file accessibility: " + e.getMessage());
-			return false; // Default to false if there is an error
+			return true; // Default to true if there is an error
 		}
 	}
 
@@ -73,8 +87,13 @@ public class HttpRequestHandler implements Runnable {
 				String[] hostParts = hostHeader.split(":");
 				String serverName = hostParts[0];
 				if (virtualHostMap.containsKey(serverName)) {
-					contentRoot = virtualHostMap.get(serverName);
+					rootDirectory = virtualHostMap.get(serverName);
 				}
+			}
+
+			if (headers.containsKey("User-Agent")) {
+				String userAgentHeader = headers.get("User-Agent");
+				maybeSetMobileRequest(userAgentHeader);
 			}
 
 			// Map the request to a HttpRequest object
@@ -93,34 +112,54 @@ public class HttpRequestHandler implements Runnable {
 		}
 	}
 
-	public HttpResponse constructResponse(HttpRequest request) {
-		HttpResponse response = new HttpResponse();
+	private File getFileIfExists(String pathName) {
+		File requestedFile = new File(pathName);
+		if (!requestedFile.exists()) {
+			if (fetchMobileFallback) {
+				pathName = pathName.replace("index_m.html", "index.html"); // Try fetching non-mobile version
+				requestedFile = new File(pathName);
+				if (!requestedFile.exists()) {
+					return null;
+				}
+			} else {
+				return null;
+			}
+		}
+		return requestedFile;
+	}
 
-		String fileName = request.getPath();
-
-		if (fileName.equals("")) {
-			fileName = "index.html"; // default file name
+	// URL is guaranteed to be relative path here
+	public HttpResponse setResponseContent(String url, HttpResponse response) {
+		// Handle some defaults here
+		if (url.equals("") || url.endsWith("/")) {
+			if (mobileRequest) {
+				url = url + "index_m.html";
+				fetchMobileFallback = true;
+			} else {
+				url = url + "index.html";
+			}
 		}
 
-		String pathName = contentRoot + fileName;
+		String pathName = rootDirectory.endsWith("/") ? rootDirectory + url : rootDirectory + "/" + url;
 
-		if (isFileBeyondRoot(pathName)) { // Check if the file is outside of the content root
+		// Uncomment when debugging locally to use relative paths - maybe TODO?
+		// pathName = pathName.substring(1);
+
+		if (isFileBeyondRoot(pathName)) {
 			response.setStatusCode(403);
 			response.setStatusMessage("Forbidden");
 			response.setBody("<h1>403 Forbidden</h1>");
 			return response;
 		}
 
-		File requestedFile = new File(pathName);
-
-		if (!requestedFile.exists() || requestedFile.isDirectory()) {
+		File requestedFile = getFileIfExists(pathName);
+		if (requestedFile == null) {
 			response.setStatusCode(404);
 			response.setStatusMessage("Not Found");
 			response.setBody("<h1>404 Not Found</h1>");
 		} else {
 			response.setStatusCode(200);
 			response.setStatusMessage("OK");
-
 			try {
 				// TODO: Handle different MIME types
 				String content = new String(Files.readAllBytes(requestedFile.toPath()), StandardCharsets.UTF_8);
@@ -131,7 +170,19 @@ public class HttpRequestHandler implements Runnable {
 				response.setBody("<h1>500 Internal Server Error</h1>");
 			}
 		}
+		response.setDateHeader();
+		return response;
+	}
 
+	public HttpResponse constructResponse(HttpRequest request) {
+		HttpResponse response = new HttpResponse();
+
+		String url = request.getPath();
+		// Ensure requested path is always relative to content root
+		if (url.startsWith("/")) {
+			url = url.substring(1);
+		}
+		setResponseContent(url, response);
 		response.setDateHeader();
 		return response;
 	}
