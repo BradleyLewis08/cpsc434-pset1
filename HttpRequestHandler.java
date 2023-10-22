@@ -9,10 +9,12 @@ public class HttpRequestHandler implements Runnable {
 	private Socket clientSocket;
 	private String contentRoot;
 	private boolean closeConnectionAfterResponse = false; // Default to keep-alive Connection
+	private Map<String, String> virtualHostMap = new HashMap<>(); // Map of serverName to rootDirectory
 
-	public HttpRequestHandler(Socket clientSocket, String contentRoot) {
+	public HttpRequestHandler(Socket clientSocket, String contentRoot, Map<String, String> virtualHostMap) {
 		this.clientSocket = clientSocket;
 		this.contentRoot = contentRoot;
+		this.virtualHostMap = virtualHostMap;
 	}
 
 	private String maybeRemoveLeadingSlash(String path) {
@@ -20,6 +22,17 @@ public class HttpRequestHandler implements Runnable {
 			return path.substring(1);
 		}
 		return path;
+	}
+
+	private boolean isFileBeyondRoot(String path) {
+		try {
+			String docRoot = new File(contentRoot).getCanonicalPath();
+			String requestedFile = new File(docRoot, path).getCanonicalPath();
+			return !requestedFile.startsWith(docRoot);
+		} catch (IOException e) {
+			System.out.println("Error checking file accessibility: " + e.getMessage());
+			return false; // Default to false if there is an error
+		}
 	}
 
 	public HttpRequest constructRequest() {
@@ -55,6 +68,15 @@ public class HttpRequestHandler implements Runnable {
 				}
 			}
 
+			if (headers.containsKey("Host")) {
+				String hostHeader = headers.get("Host");
+				String[] hostParts = hostHeader.split(":");
+				String serverName = hostParts[0];
+				if (virtualHostMap.containsKey(serverName)) {
+					contentRoot = virtualHostMap.get(serverName);
+				}
+			}
+
 			// Map the request to a HttpRequest object
 			HttpRequest request = new HttpRequest();
 			request.setMethod(method);
@@ -80,7 +102,16 @@ public class HttpRequestHandler implements Runnable {
 			fileName = "index.html"; // default file name
 		}
 
-		File requestedFile = new File(contentRoot + fileName);
+		String pathName = contentRoot + fileName;
+
+		if (isFileBeyondRoot(pathName)) { // Check if the file is outside of the content root
+			response.setStatusCode(403);
+			response.setStatusMessage("Forbidden");
+			response.setBody("<h1>403 Forbidden</h1>");
+			return response;
+		}
+
+		File requestedFile = new File(pathName);
 
 		if (!requestedFile.exists() || requestedFile.isDirectory()) {
 			response.setStatusCode(404);
@@ -91,7 +122,7 @@ public class HttpRequestHandler implements Runnable {
 			response.setStatusMessage("OK");
 
 			try {
-				// TODO: Don't just handle text files
+				// TODO: Handle different MIME types
 				String content = new String(Files.readAllBytes(requestedFile.toPath()), StandardCharsets.UTF_8);
 				response.setBody(content);
 			} catch (IOException e) {
