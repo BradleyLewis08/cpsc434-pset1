@@ -268,7 +268,15 @@ public class HttpRequestHandler implements Runnable {
 	public void run() {
 		try {
 			do {
-				HttpRequest request = constructRequest();
+				HttpRequest request = null;
+				try {
+					request = constructRequest();
+				} catch (Exception e) {
+					sendResponse(HttpResponse.badRequest());
+				}
+				if (request == null) {
+					continue;
+				}
 				HttpResponse response = constructResponse(request);
 				sendResponse(response);
 				if (!keepConnectionOpen) {
