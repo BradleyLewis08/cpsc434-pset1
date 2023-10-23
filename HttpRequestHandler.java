@@ -12,6 +12,8 @@ public class HttpRequestHandler implements Runnable {
 	private String rootDirectory;
 	private boolean keepConnectionOpen = false; // Default to close
 	private Map<String, String> virtualHostMap = new HashMap<>(); // Map of serverName to rootDirectory
+	private Cache cache;
+	private static boolean debug = true;
 
 	// Header Constants
 
@@ -31,10 +33,11 @@ public class HttpRequestHandler implements Runnable {
 	Date ifModifiedSinceDate = null;
 	List<String> acceptedMimeTypes = new ArrayList<>();
 
-	public HttpRequestHandler(Socket clientSocket, String rootDirectory, Map<String, String> virtualHostMap) {
+	public HttpRequestHandler(Socket clientSocket, String rootDirectory, Map<String, String> virtualHostMap, Cache cache) {
 		this.clientSocket = clientSocket;
 		this.rootDirectory = rootDirectory;
 		this.virtualHostMap = virtualHostMap;
+		this.cache = cache;
 	}
 
 	private String maybeRemoveLeadingSlash(String path) {
@@ -152,6 +155,10 @@ public class HttpRequestHandler implements Runnable {
 	}
 
 	private File getFileIfExists(String pathName) {
+		// File requestedFile = cache.getFile(pathName);
+		// if (requestedFile != null) {
+		// 	return requestedFile;
+		// }
 		// check cache for file
 		// if file exists in cache, pull data from cache
 		// Javamap - key: filename, value: byte[]
@@ -193,6 +200,7 @@ public class HttpRequestHandler implements Runnable {
 		}
 
 		// set byte[] data to null
+		byte[] data = cache.get(pathName);
 		// check if file exists in cache first
 		// if file exists in cache 0--> set data from cache
 		// check if data is not null
@@ -217,7 +225,13 @@ public class HttpRequestHandler implements Runnable {
 			}
 			try {
 				// if file is in cache, there is no need to read from disk
-				byte[] data = Files.readAllBytes(requestedFile.toPath());
+				if (data == null){
+					data = Files.readAllBytes(requestedFile.toPath());
+					cache.put(pathName, data); // add to cache
+				}
+				else if (debug){
+					System.out.println("File is in cache");
+				}
 				String mimeType = MimeTypeResolver.getMimeType(requestedFile.getName());
 				// Strict adherence to Accept header
 				if (!isMimeTypeAccepted(mimeType)) {

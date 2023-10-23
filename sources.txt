@@ -1,3 +1,4 @@
+./Cache.java
 ./HttpServer.java
 ./MimeTypeResolver.java
 ./ServerConfig.java
