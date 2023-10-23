@@ -252,9 +252,11 @@ public class HttpRequestHandler implements Runnable {
 		}
 
 		File requestedFile = getFileIfExists(pathName);
+
 		if (requestedFile == null) {
 			return HttpResponse.notFound();
 		} else {
+			pathName = requestedFile.getPath();
 			if (!isAuthorized(pathName)) {
 				return HttpResponse.unauthorized(credentials == null);
 			}
