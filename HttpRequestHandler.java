@@ -202,16 +202,12 @@ public class HttpRequestHandler implements Runnable {
 			Path filePath = Paths.get(pathName).toAbsolutePath();
 			Path directory = filePath.getParent();
 
-			System.out.println("Checking auth for " + directory);
-
 			// Check for .htaccess file in the directory
 			Path htaccessPath = directory.resolve(".htaccess");
-			System.out.println("Checking for htaccess file at " + htaccessPath);
 			File htaccessFile = htaccessPath.toFile();
 
-			HTAccessParser htaccessParser = new HTAccessParser(htaccessFile);
-
 			if (htaccessFile.exists() && !htaccessFile.isDirectory()) {
+				HTAccessParser htaccessParser = new HTAccessParser(htaccessFile);
 				if (htaccessParser.isAuthenticationRequired()) {
 					if (credentials == null) {
 						return false;

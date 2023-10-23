@@ -66,8 +66,8 @@ public class HttpServer {
                 Socket clientSocket = serverSocket.accept();
 
                 if (activeTasks.incrementAndGet() > MAX_CONCURRENT_REQUESTS) {
-                    HttpResponse response = HttpResponse.notAvailable();
                     activeTasks.decrementAndGet();
+                    HttpResponse response = HttpResponse.notAvailable();
                     OutputStream out = clientSocket.getOutputStream();
                     BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out));
 

@@ -1,0 +1,7 @@
+curl -v -X GET \
+  -H "Host: localhost" \
+  -H "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1" \
+  -H "Accept: text/html, image/jpeg" \
+  -H "Connection: close" \
+  -u username:password \
+  http://localhost:6789/index.html
