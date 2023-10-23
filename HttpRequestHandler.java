@@ -149,7 +149,12 @@ public class HttpRequestHandler implements Runnable {
 				String[] acceptParts = acceptHeader.split(",");
 				for (String acceptPart : acceptParts) {
 					String[] acceptPartParts = acceptPart.split(";");
-					acceptedMimeTypes.add(acceptPartParts[0].trim());
+					if (acceptPartParts[0].trim().equals("*/*")) {
+						acceptedMimeTypes.clear();
+						break;
+					} else {
+						acceptedMimeTypes.add(acceptPartParts[0].trim());
+					}
 				}
 			}
 
@@ -164,19 +169,11 @@ public class HttpRequestHandler implements Runnable {
 
 			return request;
 		} catch (IOException e) {
-			System.out.println("Error parsing request: " + e.getMessage());
 			return null;
 		}
 	}
 
 	private File getFileIfExists(String pathName) {
-		// File requestedFile = cache.getFile(pathName);
-		// if (requestedFile != null) {
-		// return requestedFile;
-		// }
-		// check cache for file
-		// if file exists in cache, pull data from cache
-		// Javamap - key: filename, value: byte[]
 		File requestedFile = new File(pathName);
 		if (!requestedFile.exists()) {
 			if (fetchMobileFallback) {
