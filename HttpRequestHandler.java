@@ -2,6 +2,7 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.regex.*;
 import java.text.SimpleDateFormat;
@@ -200,6 +201,8 @@ public class HttpRequestHandler implements Runnable {
 			return HttpResponse.forbidden();
 		}
 
+		System.out.println("Requested file: " + pathName);
+
 		File requestedFile = getFileIfExists(pathName);
 		if (requestedFile == null) {
 			return HttpResponse.notFound();
@@ -207,9 +210,6 @@ public class HttpRequestHandler implements Runnable {
 			// We now check if the file is a CGI script
 			if (requestedFile.getName().endsWith(".cgi")) {
 				// First check if the client can accept text/html in the first place
-				if (!isMimeTypeAccepted("text/html")) {
-					return HttpResponse.notAcceptable();
-				}
 				return handleCGIRequest(requestedFile, request);
 			}
 			// Check if the file has been modified since the If-Modified-Since header
@@ -327,7 +327,25 @@ public class HttpRequestHandler implements Runnable {
 			env.put("QUERY_STRING", request.getQueryString());
 			env.put("REQUEST_METHOD", request.getMethod());
 
+			if (request.isPostRequest()) {
+				String contentLength = request.getHeaders().get(CONTENT_LENGTH_HEADER);
+				if (contentLength != null) {
+					env.put("CONTENT_LENGTH", contentLength);
+				}
+				String contentType = request.getHeaders().get("Content-Type");
+				if (contentType != null) {
+					env.put("CONTENT_TYPE", contentType);
+				}
+			}
+
 			Process process = pb.start();
+
+			if (request.isPostRequest() && request.getBody() != null) {
+				try (OutputStream cgiInput = process.getOutputStream()) {
+					cgiInput.write(request.getBody().getBytes(StandardCharsets.UTF_8));
+					cgiInput.flush();
+				}
+			}
 
 			// Get the output from the CGI script
 			byte[] outputBytes;

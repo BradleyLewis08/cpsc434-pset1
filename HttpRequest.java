@@ -58,4 +58,8 @@ public class HttpRequest {
         }
         return "";
     }
+
+    public boolean isPostRequest() {
+        return "POST".equalsIgnoreCase(this.method);
+    }
 }
