@@ -152,6 +152,9 @@ public class HttpRequestHandler implements Runnable {
 	}
 
 	private File getFileIfExists(String pathName) {
+		// check cache for file
+		// if file exists in cache, pull data from cache
+		// Javamap - key: filename, value: byte[]
 		File requestedFile = new File(pathName);
 		if (!requestedFile.exists()) {
 			if (fetchMobileFallback) {
@@ -189,6 +192,12 @@ public class HttpRequestHandler implements Runnable {
 			return HttpResponse.forbidden();
 		}
 
+		// set byte[] data to null
+		// check if file exists in cache first
+		// if file exists in cache 0--> set data from cache
+		// check if data is not null
+		// if the file exists in cache, 
+		// if file does not exist in cache, check if file exists on disk
 		File requestedFile = getFileIfExists(pathName);
 		if (requestedFile == null) {
 			return HttpResponse.notFound();
@@ -207,6 +216,7 @@ public class HttpRequestHandler implements Runnable {
 				return HttpResponse.notModified();
 			}
 			try {
+				// if file is in cache, there is no need to read from disk
 				byte[] data = Files.readAllBytes(requestedFile.toPath());
 				String mimeType = MimeTypeResolver.getMimeType(requestedFile.getName());
 				// Strict adherence to Accept header
