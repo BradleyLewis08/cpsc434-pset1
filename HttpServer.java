@@ -4,12 +4,14 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.TimeUnit;
 
 public class HttpServer {
 
     public static AtomicInteger activeTasks = new AtomicInteger(0);
     public static final int MAX_CONCURRENT_REQUESTS = 10;
     private static final int CLIENT_TIMEOUT = 3000;
+    private static final ServerState serverState = new ServerState();
 
     private static boolean debug = true;
     private static int port = 8080;
@@ -60,11 +62,23 @@ public class HttpServer {
             printConfig();
         }
 
+        // create management thread
+        ManagementThread managementThread = new ManagementThread(serverState);
+        managementThread.start();
+
         ExecutorService executorService = Executors.newFixedThreadPool(MAX_CONCURRENT_REQUESTS);
 
         while (true) {
             try {
-                Socket clientSocket = serverSocket.accept();
+                Socket clientSocket;
+                if (serverState.isAcceptingRequests()) {
+                    clientSocket = serverSocket.accept(); 
+                    System.out.println("Accepted connection from " + clientSocket.getInetAddress() + ":"
+                            + clientSocket.getPort());
+                }
+                else {
+                    break;
+                }
 
                 if (activeTasks.incrementAndGet() > MAX_CONCURRENT_REQUESTS) {
                     activeTasks.decrementAndGet();
@@ -105,5 +119,9 @@ public class HttpServer {
                 System.out.println("Error sending response: " + e.getMessage());
             }
         }
+        executorService.shutdown();
+        // executorService.awaitTermination(3, TimeUnit.SECONDS); // (timeout
+        System.out.println("All requests completed. Server shutting down.");
+        serverSocket.close();
     }
 }

@@ -1,8 +1,10 @@
 ./HTAccessParser.java
 ./Cache.java
 ./HttpServer.java
+./ServerState.java
 ./CacheEntry.java
 ./MimeTypeResolver.java
+./ManagementThread.java
 ./ServerConfig.java
 ./HttpRequest.java
 ./ConfigParser.java
