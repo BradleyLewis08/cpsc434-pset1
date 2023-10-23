@@ -142,4 +142,11 @@ public class HttpResponse {
         return response;
     }
 
+    public static HttpResponse notAvailable() {
+        HttpResponse response = new HttpResponse();
+        setCommonHeaders(response);
+        response.setStatusCode(503);
+        response.setStatusMessage("Service Unavailable");
+        return response;
+    }
 }
