@@ -331,44 +331,45 @@ public class HttpRequestHandler implements Runnable {
 					continue;
 				}
 				HttpResponse response = constructResponse(request);
-				sendResponse(response);
+				try {
+					sendResponse(response);
+				} catch (Exception e) {
+					keepConnectionOpen = false;
+				}
 				if (!keepConnectionOpen) {
 					clientSocket.close();
 				}
-			} while (keepConnectionOpen);
+			} while (keepConnectionOpen && !clientSocket.isClosed());
 		} catch (Exception e) {
 			System.out.println("Error handling request: " + e.getMessage());
+			keepConnectionOpen = false;
 		} finally {
 			HttpServer.activeTasks.decrementAndGet();
 		}
 	}
 
-	public void sendResponse(HttpResponse response) {
-		try {
-			OutputStream out = clientSocket.getOutputStream();
-			BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out));
+	public void sendResponse(HttpResponse response) throws SocketException, IOException {
+		OutputStream out = clientSocket.getOutputStream();
+		BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out));
 
-			// Write the status line
-			writer.write(response.getVersion() + " " + response.getStatusCode() + " " + response.getStatusMessage());
+		// Write the status line
+		writer.write(response.getVersion() + " " + response.getStatusCode() + " " + response.getStatusMessage());
+		writer.newLine();
+
+		// Write the headers
+		for (Map.Entry<String, String> entry : response.getHeaders().entrySet()) {
+			writer.write(entry.getKey() + ": " + entry.getValue());
 			writer.newLine();
+		}
 
-			// Write the headers
-			for (Map.Entry<String, String> entry : response.getHeaders().entrySet()) {
-				writer.write(entry.getKey() + ": " + entry.getValue());
-				writer.newLine();
-			}
+		// Blank line
+		writer.newLine();
+		writer.flush();
 
-			// Blank line
-			writer.newLine();
-			writer.flush();
-
-			// Write the body
-			if (response.getBody() != null) {
-				out.write(response.getBody());
-				out.flush();
-			}
-		} catch (Exception e) {
-			System.out.println("Error sending response: " + e.getMessage());
+		// Write the body
+		if (response.getBody() != null) {
+			out.write(response.getBody());
+			out.flush();
 		}
 	}
 
