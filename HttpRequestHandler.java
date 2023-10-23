@@ -33,7 +33,8 @@ public class HttpRequestHandler implements Runnable {
 	Date ifModifiedSinceDate = null;
 	List<String> acceptedMimeTypes = new ArrayList<>();
 
-	public HttpRequestHandler(Socket clientSocket, String rootDirectory, Map<String, String> virtualHostMap, Cache cache) {
+	public HttpRequestHandler(Socket clientSocket, String rootDirectory, Map<String, String> virtualHostMap,
+			Cache cache) {
 		this.clientSocket = clientSocket;
 		this.rootDirectory = rootDirectory;
 		this.virtualHostMap = virtualHostMap;
@@ -157,7 +158,7 @@ public class HttpRequestHandler implements Runnable {
 	private File getFileIfExists(String pathName) {
 		// File requestedFile = cache.getFile(pathName);
 		// if (requestedFile != null) {
-		// 	return requestedFile;
+		// return requestedFile;
 		// }
 		// check cache for file
 		// if file exists in cache, pull data from cache
@@ -199,13 +200,6 @@ public class HttpRequestHandler implements Runnable {
 			return HttpResponse.forbidden();
 		}
 
-		// set byte[] data to null
-		byte[] data = cache.get(pathName);
-		// check if file exists in cache first
-		// if file exists in cache 0--> set data from cache
-		// check if data is not null
-		// if the file exists in cache, 
-		// if file does not exist in cache, check if file exists on disk
 		File requestedFile = getFileIfExists(pathName);
 		if (requestedFile == null) {
 			return HttpResponse.notFound();
@@ -219,18 +213,33 @@ public class HttpRequestHandler implements Runnable {
 				return handleCGIRequest(requestedFile, request);
 			}
 			// Check if the file has been modified since the If-Modified-Since header
+			CacheEntry maybeEntry = cache.get(pathName);
 			long lastModified = requestedFile.lastModified();
-			if (ifModifiedSinceDate != null && lastModified <= ifModifiedSinceDate.getTime()) {
-				return HttpResponse.notModified();
+
+			// If cache entry was added before the file was modified, remove it
+			if (maybeEntry != null) {
+				if (maybeEntry.getTimeAdded() < lastModified) {
+					cache.removeCacheEntry(pathName);
+					maybeEntry = null;
+				} else {
+					lastModified = maybeEntry.getTimeAdded();
+				}
 			}
+
+			if (ifModifiedSinceDate != null && lastModified <= ifModifiedSinceDate.getTime()) {
+				if (lastModified <= ifModifiedSinceDate.getTime()) {
+					return HttpResponse.notModified();
+				}
+			}
+
 			try {
-				// if file is in cache, there is no need to read from disk
-				if (data == null){
+				byte[] data = null;
+				if (maybeEntry != null) {
+					// if file is in cache, there is no need to read from disk
+					data = maybeEntry.getContent();
+				} else {
 					data = Files.readAllBytes(requestedFile.toPath());
 					cache.put(pathName, data); // add to cache
-				}
-				else if (debug){
-					System.out.println("File is in cache");
 				}
 				String mimeType = MimeTypeResolver.getMimeType(requestedFile.getName());
 				// Strict adherence to Accept header

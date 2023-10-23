@@ -1,32 +1,29 @@
 import java.util.*;
-import java.io.*;
 
 public class Cache {
-    private final Map<String, byte[]> cache;
+    private final LinkedHashMap<String, CacheEntry> cache;
     // private final Map<String, File> requestedFile = null;
     private final int cacheSize;
 
     public Cache(int cacheSize) {
         this.cacheSize = cacheSize;
-        this.cache = new LinkedHashMap<String, byte[]>(cacheSize + 1, 0.75f, true) {
+        this.cache = new LinkedHashMap<String, CacheEntry>(this.cacheSize + 1, 0.75f, true) {
             @Override
-            protected boolean removeEldestEntry(Map.Entry<String, byte[]> eldest) {
+            protected boolean removeEldestEntry(Map.Entry<String, CacheEntry> eldest) {
                 return size() > cacheSize;
             }
         };
     }
 
     public void put(String key, byte[] value) {
-        cache.put(key, value);
-        // this.requestedFile.put(key, requestedFile);
+        cache.put(key, new CacheEntry(value));
     }
 
-    public byte[] get(String key) {
+    public CacheEntry get(String key) {
         return cache.get(key);
     }
 
-    // public File getFile(String key){
-    //     return requestedFile.get(key);
-    // }
+    public void removeCacheEntry(String pathName) {
+        cache.remove(pathName);
+    }
 }
-

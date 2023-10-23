@@ -1,5 +1,6 @@
 ./Cache.java
 ./HttpServer.java
+./CacheEntry.java
 ./MimeTypeResolver.java
 ./ServerConfig.java
 ./HttpRequest.java
