@@ -70,9 +70,6 @@ public class HttpResponse {
         this.body = body;
     }
 
-    // need to implement support for chunked transfer encoding instead of
-    // content-length
-    // not sure if this is correct implementation
     public void setTransferEncodingHeader(String transferEncoding) {
         headers.put("Transfer-Encoding", transferEncoding);
     }
@@ -83,6 +80,14 @@ public class HttpResponse {
     }
 
     // ------------------ Response Factories ------------------
+
+    public static HttpResponse heartbeat_ok() {
+        HttpResponse response = new HttpResponse();
+        setCommonHeaders(response);
+        response.setStatusCode(200);
+        response.setStatusMessage("OK");
+        return response;
+    }
 
     public static HttpResponse ok(byte[] content, long lastModified, String mimeType) {
         HttpResponse response = new HttpResponse();
@@ -107,6 +112,18 @@ public class HttpResponse {
         HttpResponse response = new HttpResponse();
         response.setStatusCode(400);
         response.setStatusMessage("Bad Request");
+        return response;
+    }
+
+    public static HttpResponse unauthorized(boolean credentialsMissing) {
+        HttpResponse response = new HttpResponse();
+        setCommonHeaders(response);
+        response.setStatusCode(401);
+        response.setStatusMessage("Unauthorized");
+        if (credentialsMissing) {
+            response.getHeaders().put("WWW-Authenticate",
+                    "Basic realm=\"Restricted Files\", charset=\"UTF-8\"");
+        }
         return response;
     }
 

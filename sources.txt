@@ -1,3 +1,4 @@
+./HTAccessParser.java
 ./Cache.java
 ./HttpServer.java
 ./CacheEntry.java

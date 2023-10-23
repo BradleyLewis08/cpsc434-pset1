@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class HttpServer {
 
     public static AtomicInteger activeTasks = new AtomicInteger(0);
-    public static final int MAX_CONCURRENT_REQUESTS = 1;
+    public static final int MAX_CONCURRENT_REQUESTS = 10;
 
     private static boolean debug = true;
     private static int port = 8080;

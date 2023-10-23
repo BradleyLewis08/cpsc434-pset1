@@ -1,0 +1,4 @@
+AuthType Basic
+AuthName "Restricted Files"
+User dXNlcm5hbWU=  
+Password cGFzc3dvcmQ= 

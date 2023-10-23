@@ -2,8 +2,11 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.nio.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.regex.*;
 import java.text.SimpleDateFormat;
 
@@ -15,6 +18,7 @@ public class HttpRequestHandler implements Runnable {
 	private Map<String, String> virtualHostMap = new HashMap<>(); // Map of serverName to rootDirectory
 	private Cache cache;
 	private static boolean debug = true;
+	private String credentials = null;
 
 	// Header Constants
 
@@ -24,12 +28,13 @@ public class HttpRequestHandler implements Runnable {
 	private static final String IF_MODIFIED_SINCE_HEADER = "If-Modified-Since";
 	private static final String CONNECTION_HEADER = "Connection";
 	private static final String AUTHORIZATION_HEADER = "Authorization";
-
 	private static final String CONTENT_LENGTH_HEADER = "Content-Length";
 
 	private boolean mobileRequest = false; // Is the request from a mobile device?
 	private boolean fetchMobileFallback = false; // If URL is not specified for mobile device, we should fallback to
 													// search for index.html before returning 404
+
+	private static int TRANSFER_ENCODING_CHUNK_SIZE = 1024;
 
 	Date ifModifiedSinceDate = null;
 	List<String> acceptedMimeTypes = new ArrayList<>();
@@ -130,6 +135,14 @@ public class HttpRequestHandler implements Runnable {
 				}
 			}
 
+			if (headers.containsKey(AUTHORIZATION_HEADER)) {
+				String authHeader = headers.get(AUTHORIZATION_HEADER);
+				String[] authParts = authHeader.split(" ");
+				if (authParts.length == 2 && authParts[0].equals("Basic")) {
+					credentials = authParts[1];
+				}
+			}
+
 			if (headers.containsKey(ACCEPT_HEADER)) {
 				String acceptHeader = headers.get(ACCEPT_HEADER);
 				// Create a list of accepted mime types
@@ -183,8 +196,52 @@ public class HttpRequestHandler implements Runnable {
 		return acceptedMimeTypes.isEmpty() || acceptedMimeTypes.contains(mimeType);
 	}
 
+	public boolean isAuthorized(String pathName) {
+		try {
+			// Get the directory of the file
+			Path filePath = Paths.get(pathName).toAbsolutePath();
+			Path directory = filePath.getParent();
+
+			System.out.println("Checking auth for " + directory);
+
+			// Check for .htaccess file in the directory
+			Path htaccessPath = directory.resolve(".htaccess");
+			System.out.println("Checking for htaccess file at " + htaccessPath);
+			File htaccessFile = htaccessPath.toFile();
+
+			HTAccessParser htaccessParser = new HTAccessParser(htaccessFile);
+
+			if (htaccessFile.exists() && !htaccessFile.isDirectory()) {
+				if (htaccessParser.isAuthenticationRequired()) {
+					if (credentials == null) {
+						return false;
+					}
+					return htaccessParser.authenticate(credentials);
+				}
+				return true;
+			}
+			return true;
+		} catch (Exception e) {
+			// Handle exceptions, possibly by logging
+			e.printStackTrace();
+		}
+		// If we reach here, no auth required
+		return true;
+	}
+
 	// URL is guaranteed to be relative path here
 	public HttpResponse setResponseContent(String url, HttpResponse response, HttpRequest request) {
+		if ("load".equals(url)) {
+			// Check active tasks
+			int activeTasks = HttpServer.activeTasks.get();
+			int maxTasks = HttpServer.MAX_CONCURRENT_REQUESTS;
+
+			if (activeTasks > maxTasks) {
+				return HttpResponse.notAvailable();
+			} else {
+				return HttpResponse.heartbeat_ok();
+			}
+		}
 		// Handle some defaults here
 		if (url.equals("") || url.endsWith("/")) {
 			if (mobileRequest) {
@@ -201,12 +258,13 @@ public class HttpRequestHandler implements Runnable {
 			return HttpResponse.forbidden();
 		}
 
-		System.out.println("Requested file: " + pathName);
-
 		File requestedFile = getFileIfExists(pathName);
 		if (requestedFile == null) {
 			return HttpResponse.notFound();
 		} else {
+			if (!isAuthorized(pathName)) {
+				return HttpResponse.unauthorized(credentials == null);
+			}
 			// We now check if the file is a CGI script
 			if (requestedFile.getName().endsWith(".cgi")) {
 				// First check if the client can accept text/html in the first place
@@ -364,6 +422,40 @@ public class HttpRequestHandler implements Runnable {
 			if (exitCode != 0) {
 				return HttpResponse.internalServerError();
 			}
+
+			try {
+				OutputStream out = clientSocket.getOutputStream();
+				BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out));
+
+				// Write the status line and headers
+				writer.write("HTTP/1.1 200 OK\r\n");
+				writer.write("Date: " + new Date() + "\r\n");
+				writer.write("Server: MyHTTPServer\r\n");
+				writer.write("Content-Type: text/html\r\n");
+				writer.write("Transfer-Encoding: chunked\r\n");
+				writer.write("\r\n"); // Write blank line between headers and body
+				writer.flush();
+
+				// Write the body
+				int offset = 0;
+
+				while (offset < outputBytes.length) {
+					int chunkSize = Math.min(TRANSFER_ENCODING_CHUNK_SIZE, outputBytes.length - offset);
+					out.write(Integer.toHexString(chunkSize).getBytes(StandardCharsets.UTF_8)); // Send chunk size in
+																								// hex
+					out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+					out.write(outputBytes, offset, chunkSize);
+					out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+					offset += chunkSize;
+				}
+				// Final chunk
+				out.write("0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+				out.flush();
+			} catch (Exception e) {
+				System.out.println("Error sending response: " + e.getMessage());
+				return HttpResponse.internalServerError();
+			}
+			// Implement chunked transfer encoding
 
 			return HttpResponse.ok(outputBytes, cgiFile.lastModified(), "text/html");
 		} catch (Exception e) {
