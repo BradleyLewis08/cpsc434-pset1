@@ -11,10 +11,10 @@ public class ManagementThread extends Thread {
     @Override
     public void run() {
         Scanner scanner = new Scanner(System.in);
-        while (true){
+        while (true) {
             System.out.println("Management control console > ");
             String command = scanner.nextLine();
-            switch(command){
+            switch (command) {
                 case "shutdown":
                     if (!serverState.isAcceptingRequests()) {
                         System.out.println("Server is already in the process of shutting down.");
@@ -28,5 +28,5 @@ public class ManagementThread extends Thread {
             }
         }
     }
-    
+
 }

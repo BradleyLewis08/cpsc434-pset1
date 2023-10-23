@@ -53,6 +53,7 @@ public class HttpServer {
         cacheSize = serverConfig.getCacheSize();
 
         ServerSocket serverSocket = new ServerSocket(port);
+        serverSocket.setSoTimeout(1000);
         System.out.println("Server listening at: " + port);
 
         // create cache
@@ -68,18 +69,16 @@ public class HttpServer {
 
         ExecutorService executorService = Executors.newFixedThreadPool(MAX_CONCURRENT_REQUESTS);
 
-        while (true) {
+        while (serverState.isAcceptingRequests()) {
             try {
                 Socket clientSocket;
-                if (serverState.isAcceptingRequests()) {
-                    clientSocket = serverSocket.accept(); 
+                try {
+                    clientSocket = serverSocket.accept();
                     System.out.println("Accepted connection from " + clientSocket.getInetAddress() + ":"
                             + clientSocket.getPort());
+                } catch (SocketTimeoutException e) {
+                    continue;
                 }
-                else {
-                    break;
-                }
-
                 if (activeTasks.incrementAndGet() > MAX_CONCURRENT_REQUESTS) {
                     activeTasks.decrementAndGet();
                     HttpResponse response = HttpResponse.notAvailable();
@@ -123,5 +122,6 @@ public class HttpServer {
         // executorService.awaitTermination(3, TimeUnit.SECONDS); // (timeout
         System.out.println("All requests completed. Server shutting down.");
         serverSocket.close();
+        managementThread.interrupt();
     }
 }
