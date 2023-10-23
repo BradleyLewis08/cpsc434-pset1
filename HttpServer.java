@@ -9,6 +9,7 @@ public class HttpServer {
 
     public static AtomicInteger activeTasks = new AtomicInteger(0);
     public static final int MAX_CONCURRENT_REQUESTS = 10;
+    private static final int CLIENT_TIMEOUT = 3000;
 
     private static boolean debug = true;
     private static int port = 8080;
@@ -92,8 +93,10 @@ public class HttpServer {
                         out.flush();
                     }
                 } else {
+                    clientSocket.setSoTimeout(CLIENT_TIMEOUT);
                     // Handle incoming request
-                    HttpRequestHandler requestHandlerTask = new HttpRequestHandler(clientSocket, defaultRootDirectory,
+                    HttpRequestHandler requestHandlerTask = new HttpRequestHandler(clientSocket,
+                            defaultRootDirectory,
                             virtualHostMaps, cache);
 
                     executorService.execute(requestHandlerTask);

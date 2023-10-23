@@ -75,102 +75,98 @@ public class HttpRequestHandler implements Runnable {
 		}
 	}
 
-	public HttpRequest constructRequest() {
-		try {
-			BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-			String requestLine = in.readLine();
-			String[] requestParts = requestLine.split(" ");
-			String method = requestParts[0];
-			String path = maybeRemoveLeadingSlash(requestParts[1]);
-			String version = requestParts[2];
+	public HttpRequest constructRequest() throws IOException {
+		BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+		String requestLine = in.readLine();
+		String[] requestParts = requestLine.split(" ");
+		String method = requestParts[0];
+		String path = maybeRemoveLeadingSlash(requestParts[1]);
+		String version = requestParts[2];
 
-			// Parse the headers
-			Map<String, String> headers = new HashMap<>();
-			String headerLine;
-			while ((headerLine = in.readLine()) != null && !headerLine.isEmpty()) {
-				String[] headerParts = headerLine.split(": ");
-				headers.put(headerParts[0], headerParts[1]);
-			}
-
-			// Parse the body if it exists
-			String body = null;
-			if (headers.containsKey(CONTENT_LENGTH_HEADER)) {
-				int contentLength = Integer.parseInt(headers.get(CONTENT_LENGTH_HEADER));
-				char[] bodyChars = new char[contentLength];
-				in.read(bodyChars, 0, contentLength);
-				body = new String(bodyChars);
-			}
-
-			if (headers.containsKey(CONNECTION_HEADER)) {
-				String connectionHeader = headers.get(CONNECTION_HEADER);
-				if (connectionHeader.equals("keep-alive")) {
-					keepConnectionOpen = true;
-				} else if (connectionHeader.equals("close")) {
-					keepConnectionOpen = false;
-				}
-			}
-
-			if (headers.containsKey(HOST_HEADER)) {
-				String hostHeader = headers.get(HOST_HEADER);
-				String[] hostParts = hostHeader.split(":");
-				String serverName = hostParts[0];
-				if (virtualHostMap.containsKey(serverName)) {
-					rootDirectory = virtualHostMap.get(serverName);
-				}
-			}
-
-			if (headers.containsKey(USER_AGENT_HEADER)) {
-				String userAgentHeader = headers.get(USER_AGENT_HEADER);
-				maybeSetMobileRequest(userAgentHeader);
-			}
-
-			if (headers.containsKey(IF_MODIFIED_SINCE_HEADER)) {
-				SimpleDateFormat format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US);
-				format.setTimeZone(TimeZone.getTimeZone("GMT"));
-				try {
-					ifModifiedSinceDate = format.parse(headers.get(IF_MODIFIED_SINCE_HEADER));
-				} catch (Exception e) {
-					// Ignore the header if it is malformed
-					System.out.println("Error parsing date, ignoring If-Modified-Since header " + e.getMessage());
-				}
-			}
-
-			if (headers.containsKey(AUTHORIZATION_HEADER)) {
-				String authHeader = headers.get(AUTHORIZATION_HEADER);
-				String[] authParts = authHeader.split(" ");
-				if (authParts.length == 2 && authParts[0].equals("Basic")) {
-					credentials = authParts[1];
-				}
-			}
-
-			if (headers.containsKey(ACCEPT_HEADER)) {
-				String acceptHeader = headers.get(ACCEPT_HEADER);
-				// Create a list of accepted mime types
-				String[] acceptParts = acceptHeader.split(",");
-				for (String acceptPart : acceptParts) {
-					String[] acceptPartParts = acceptPart.split(";");
-					if (acceptPartParts[0].trim().equals("*/*")) {
-						acceptedMimeTypes.clear();
-						break;
-					} else {
-						acceptedMimeTypes.add(acceptPartParts[0].trim());
-					}
-				}
-			}
-
-			// Map the request to a HttpRequest object
-			HttpRequest request = new HttpRequest();
-			request.setMethod(method);
-			request.setPath(path);
-			request.setVersion(version);
-			request.setHeaders(headers);
-			if (body != null)
-				request.setBody(body);
-
-			return request;
-		} catch (IOException e) {
-			return null;
+		// Parse the headers
+		Map<String, String> headers = new HashMap<>();
+		String headerLine;
+		while ((headerLine = in.readLine()) != null && !headerLine.isEmpty()) {
+			String[] headerParts = headerLine.split(": ");
+			headers.put(headerParts[0], headerParts[1]);
 		}
+
+		// Parse the body if it exists
+		String body = null;
+		if (headers.containsKey(CONTENT_LENGTH_HEADER)) {
+			int contentLength = Integer.parseInt(headers.get(CONTENT_LENGTH_HEADER));
+			char[] bodyChars = new char[contentLength];
+			in.read(bodyChars, 0, contentLength);
+			body = new String(bodyChars);
+		}
+
+		if (headers.containsKey(CONNECTION_HEADER)) {
+			String connectionHeader = headers.get(CONNECTION_HEADER);
+			if (connectionHeader.equals("keep-alive")) {
+				keepConnectionOpen = true;
+			} else if (connectionHeader.equals("close")) {
+				keepConnectionOpen = false;
+			}
+		}
+
+		if (headers.containsKey(HOST_HEADER)) {
+			String hostHeader = headers.get(HOST_HEADER);
+			String[] hostParts = hostHeader.split(":");
+			String serverName = hostParts[0];
+			if (virtualHostMap.containsKey(serverName)) {
+				rootDirectory = virtualHostMap.get(serverName);
+			}
+		}
+
+		if (headers.containsKey(USER_AGENT_HEADER)) {
+			String userAgentHeader = headers.get(USER_AGENT_HEADER);
+			maybeSetMobileRequest(userAgentHeader);
+		}
+
+		if (headers.containsKey(IF_MODIFIED_SINCE_HEADER)) {
+			SimpleDateFormat format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US);
+			format.setTimeZone(TimeZone.getTimeZone("GMT"));
+			try {
+				ifModifiedSinceDate = format.parse(headers.get(IF_MODIFIED_SINCE_HEADER));
+			} catch (Exception e) {
+				// Ignore the header if it is malformed
+				System.out.println("Error parsing date, ignoring If-Modified-Since header " + e.getMessage());
+			}
+		}
+
+		if (headers.containsKey(AUTHORIZATION_HEADER)) {
+			String authHeader = headers.get(AUTHORIZATION_HEADER);
+			String[] authParts = authHeader.split(" ");
+			if (authParts.length == 2 && authParts[0].equals("Basic")) {
+				credentials = authParts[1];
+			}
+		}
+
+		if (headers.containsKey(ACCEPT_HEADER)) {
+			String acceptHeader = headers.get(ACCEPT_HEADER);
+			// Create a list of accepted mime types
+			String[] acceptParts = acceptHeader.split(",");
+			for (String acceptPart : acceptParts) {
+				String[] acceptPartParts = acceptPart.split(";");
+				if (acceptPartParts[0].trim().equals("*/*")) {
+					acceptedMimeTypes.clear();
+					break;
+				} else {
+					acceptedMimeTypes.add(acceptPartParts[0].trim());
+				}
+			}
+		}
+
+		// Map the request to a HttpRequest object
+		HttpRequest request = new HttpRequest();
+		request.setMethod(method);
+		request.setPath(path);
+		request.setVersion(version);
+		request.setHeaders(headers);
+		if (body != null)
+			request.setBody(body);
+
+		return request;
 	}
 
 	private File getFileIfExists(String pathName) {
@@ -321,12 +317,7 @@ public class HttpRequestHandler implements Runnable {
 	public void run() {
 		try {
 			do {
-				HttpRequest request = null;
-				try {
-					request = constructRequest();
-				} catch (Exception e) {
-					sendResponse(HttpResponse.badRequest());
-				}
+				HttpRequest request = constructRequest();
 				if (request == null) {
 					continue;
 				}
@@ -340,6 +331,13 @@ public class HttpRequestHandler implements Runnable {
 					clientSocket.close();
 				}
 			} while (keepConnectionOpen && !clientSocket.isClosed());
+		} catch (SocketTimeoutException e) {
+			try {
+				System.out.println("Socket timed out: " + e.getMessage());
+				clientSocket.close();
+			} catch (Exception ex) {
+				System.out.println("Error closing socket: " + ex.getMessage());
+			}
 		} catch (Exception e) {
 			System.out.println("Error handling request: " + e.getMessage());
 			keepConnectionOpen = false;

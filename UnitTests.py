@@ -4,7 +4,7 @@ import base64
 
 class TestHTTPServer(unittest.TestCase):
 
-    BASE_URL = 'http://localhost:6789'  # change to your server's address and port
+    BASE_URL = 'http://localhost:6789/index.html'  # change to your server's address and port
     AUTH_CREDENTIALS = ('user', 'password')  # change to your basic auth credentials
 
     def test_get_method(self):
