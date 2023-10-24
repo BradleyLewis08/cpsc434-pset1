@@ -21,7 +21,6 @@ public class HttpRequestHandler implements Runnable {
 	private String credentials = null;
 
 	// Header Constants
-
 	private static final String HOST_HEADER = "Host";
 	private static final String ACCEPT_HEADER = "Accept";
 	private static final String USER_AGENT_HEADER = "User-Agent";
@@ -40,7 +39,7 @@ public class HttpRequestHandler implements Runnable {
 	List<String> acceptedMimeTypes = new ArrayList<>();
 
 	public HttpRequestHandler(Socket clientSocket, String rootDirectory, Map<String, String> virtualHostMap,
-			Cache cache) {
+			Cache cache, ServerState serverState) {
 		this.clientSocket = clientSocket;
 		this.rootDirectory = rootDirectory;
 		this.virtualHostMap = virtualHostMap;
@@ -65,7 +64,6 @@ public class HttpRequestHandler implements Runnable {
 
 	private boolean isFileBeyondRoot(String path) {
 		try {
-
 			String docRoot = new File(rootDirectory).getCanonicalPath();
 			String requestedFile = new File(path).getCanonicalPath();
 			return !requestedFile.startsWith(docRoot);
@@ -319,12 +317,20 @@ public class HttpRequestHandler implements Runnable {
 			do {
 				HttpRequest request = constructRequest();
 				if (request == null) {
+					System.out.println("Null request");
 					continue;
+				}
+				// check if server is at capacity
+				if (HttpServer.activeTasks.get() >= HttpServer.MAX_CONCURRENT_REQUESTS) {
+					System.out.println("Server at capacity, sending 503");
+					HttpResponseSender.sendResponse(HttpResponse.notAvailable(), clientSocket.getOutputStream());
+					clientSocket.close();
+					return;
 				}
 				HttpResponse response = constructResponse(request);
 				try {
-					sendResponse(response);
-				} catch (Exception e) {
+					HttpResponseSender.sendResponse(response, clientSocket.getOutputStream());
+				} catch (IOException e) {
 					keepConnectionOpen = false;
 				}
 				if (!keepConnectionOpen) {
@@ -333,7 +339,6 @@ public class HttpRequestHandler implements Runnable {
 			} while (keepConnectionOpen && !clientSocket.isClosed());
 		} catch (SocketTimeoutException e) {
 			try {
-				System.out.println("Socket timed out: " + e.getMessage());
 				clientSocket.close();
 			} catch (Exception ex) {
 				System.out.println("Error closing socket: " + ex.getMessage());

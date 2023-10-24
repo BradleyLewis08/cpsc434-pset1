@@ -4,12 +4,11 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.TimeUnit;
 
 public class HttpServer {
 
     public static AtomicInteger activeTasks = new AtomicInteger(0);
-    public static final int MAX_CONCURRENT_REQUESTS = 10;
+    public static final int MAX_CONCURRENT_REQUESTS = 1;
     private static final int CLIENT_TIMEOUT = 3000;
     private static final ServerState serverState = new ServerState();
 
@@ -54,74 +53,43 @@ public class HttpServer {
 
         ServerSocket serverSocket = new ServerSocket(port);
         serverSocket.setSoTimeout(1000);
-        System.out.println("Server listening at: " + port);
 
         // create cache
         Cache cache = new Cache(cacheSize);
 
-        if (debug) {
-            printConfig();
-        }
+        // printConfig();
 
         // create management thread
         ManagementThread managementThread = new ManagementThread(serverState);
         managementThread.start();
 
-        ExecutorService executorService = Executors.newFixedThreadPool(MAX_CONCURRENT_REQUESTS);
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
 
         while (serverState.isAcceptingRequests()) {
             try {
                 Socket clientSocket;
                 try {
                     clientSocket = serverSocket.accept();
-                    System.out.println("Accepted connection from " + clientSocket.getInetAddress() + ":"
-                            + clientSocket.getPort());
                 } catch (SocketTimeoutException e) {
+                    // Periodic timeout to check if server is still accepting requests
                     continue;
                 }
-                if (activeTasks.incrementAndGet() > MAX_CONCURRENT_REQUESTS) {
-                    activeTasks.decrementAndGet();
-                    HttpResponse response = HttpResponse.notAvailable();
-                    OutputStream out = clientSocket.getOutputStream();
-                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out));
-
-                    // Write the status line
-                    writer.write(
-                            response.getVersion() + " " + response.getStatusCode() + " " + response.getStatusMessage());
-                    writer.newLine();
-
-                    // Write the headers
-                    for (Map.Entry<String, String> entry : response.getHeaders().entrySet()) {
-                        writer.write(entry.getKey() + ": " + entry.getValue());
-                        writer.newLine();
-                    }
-
-                    // Blank line
-                    writer.newLine();
-                    writer.flush();
-
-                    // Write the body
-                    if (response.getBody() != null) {
-                        out.write(response.getBody());
-                        out.flush();
-                    }
-                } else {
-                    clientSocket.setSoTimeout(CLIENT_TIMEOUT);
-                    // Handle incoming request
-                    HttpRequestHandler requestHandlerTask = new HttpRequestHandler(clientSocket,
-                            defaultRootDirectory,
-                            virtualHostMaps, cache);
-
-                    executorService.execute(requestHandlerTask);
-                }
+                clientSocket.setSoTimeout(CLIENT_TIMEOUT);
+                // Handle incoming request
+                HttpRequestHandler requestHandlerTask = new HttpRequestHandler(clientSocket,
+                        defaultRootDirectory,
+                        virtualHostMaps, cache, serverState);
+                executorService.execute(requestHandlerTask);
             } catch (Exception e) {
                 System.out.println("Error sending response: " + e.getMessage());
             }
         }
         executorService.shutdown();
-        // executorService.awaitTermination(3, TimeUnit.SECONDS); // (timeout
-        System.out.println("All requests completed. Server shutting down.");
+        System.out.println("Waiting for all tasks to finish...");
+        while (!executorService.isTerminated()) {
+            continue;
+        }
+        System.out.println("All tasks finished.");
         serverSocket.close();
-        managementThread.interrupt();
     }
 }
