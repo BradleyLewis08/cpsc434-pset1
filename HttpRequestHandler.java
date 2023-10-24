@@ -17,7 +17,6 @@ public class HttpRequestHandler implements Runnable {
 	private boolean keepConnectionOpen = false; // Default to close
 	private Map<String, String> virtualHostMap = new HashMap<>(); // Map of serverName to rootDirectory
 	private Cache cache;
-	private static boolean debug = true;
 	private String credentials = null;
 
 	// Header Constants
@@ -321,8 +320,8 @@ public class HttpRequestHandler implements Runnable {
 					continue;
 				}
 				// check if server is at capacity
-				if (HttpServer.activeTasks.get() >= HttpServer.MAX_CONCURRENT_REQUESTS) {
-					System.out.println("Server at capacity, sending 503");
+				if (HttpServer.activeTasks.getAndIncrement() >= HttpServer.MAX_CONCURRENT_REQUESTS) {
+					HttpServer.activeTasks.decrementAndGet();
 					HttpResponseSender.sendResponse(HttpResponse.notAvailable(), clientSocket.getOutputStream());
 					clientSocket.close();
 					return;

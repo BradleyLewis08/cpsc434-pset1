@@ -1,30 +1,15 @@
 import java.io.*;
 import java.net.*;
-import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class HttpServer {
-
     public static AtomicInteger activeTasks = new AtomicInteger(0);
     public static final int MAX_CONCURRENT_REQUESTS = 1;
-    private static final int CLIENT_TIMEOUT = 3000;
+    private static final int CLIENT_TIMEOUT = 999999;
     private static final ServerState serverState = new ServerState();
-
-    private static boolean debug = true;
-    private static int port = 8080;
-    private static int cacheSize = 0;
-
-    private static Map<String, String> virtualHostMaps = new HashMap<>(); // Map of serverName to rootDirectory
     static String defaultRootDirectory = null;
-
-    private static void printConfig() {
-        System.out.println("port: " + port);
-        System.out.println("cacheSize: " + cacheSize);
-        System.out.println("defaultRootDirectory: " + defaultRootDirectory);
-        System.out.println("virtualHostMaps: " + virtualHostMaps);
-    }
 
     public static void main(String[] args) throws IOException {
         // create new server and client sockets
@@ -32,12 +17,9 @@ public class HttpServer {
             System.out.println("Usage: java HttpServer -config <config file>");
             System.exit(1);
         }
-
-        ConfigParser configParser = new ConfigParser(args[1]);
         ServerConfig serverConfig = null;
-
         try {
-            serverConfig = configParser.parseConfig();
+            serverConfig = ConfigParser.parseConfig(args[1]);
         } catch (InvalidConfigException e) {
             System.out.println("Invalid config: " + e);
             System.exit(1);
@@ -46,18 +28,11 @@ public class HttpServer {
             System.exit(1);
         }
 
-        port = serverConfig.getPort();
-        virtualHostMaps = serverConfig.getVirtualHosts();
-        defaultRootDirectory = serverConfig.getDefaultRootDirectory();
-        cacheSize = serverConfig.getCacheSize();
-
-        ServerSocket serverSocket = new ServerSocket(port);
+        ServerSocket serverSocket = new ServerSocket(serverConfig.getPort());
         serverSocket.setSoTimeout(1000);
 
         // create cache
-        Cache cache = new Cache(cacheSize);
-
-        // printConfig();
+        Cache cache = new Cache(serverConfig.getCacheSize());
 
         // create management thread
         ManagementThread managementThread = new ManagementThread(serverState);
@@ -77,15 +52,15 @@ public class HttpServer {
                 clientSocket.setSoTimeout(CLIENT_TIMEOUT);
                 // Handle incoming request
                 HttpRequestHandler requestHandlerTask = new HttpRequestHandler(clientSocket,
-                        defaultRootDirectory,
-                        virtualHostMaps, cache, serverState);
+                        serverConfig.getDefaultRootDirectory(),
+                        serverConfig.getVirtualHosts(), cache, serverState);
                 executorService.execute(requestHandlerTask);
             } catch (Exception e) {
                 System.out.println("Error sending response: " + e.getMessage());
             }
         }
         executorService.shutdown();
-        System.out.println("Waiting for all tasks to finish...");
+        System.out.println("Waiting for all requests to finish...");
         while (!executorService.isTerminated()) {
             continue;
         }

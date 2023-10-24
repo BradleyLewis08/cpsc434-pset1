@@ -33,7 +33,7 @@ do
     -H "User-Agent: $RANDOM_USER_AGENT" \
     -H "Accept: $RANDOM_ACCEPT_HEADER" \
     -H "Connection: close" \
-    http://localhost:6789/$RANDOM_FILE
+    http://localhost:6789/load
 
     # Sleep for a short period (e.g., 1 second) to avoid spamming the server too fast
     sleep 1000

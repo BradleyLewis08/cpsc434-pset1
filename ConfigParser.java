@@ -12,19 +12,12 @@ class VirtualHost {
 }
 
 public class ConfigParser {
-
-	private String configFilePath;
-
 	private enum ParseState {
 		NONE,
 		VIRTUAL_HOST,
 	}
 
-	public ConfigParser(String configFilePath) {
-		this.configFilePath = configFilePath;
-	}
-
-	public ServerConfig parseConfig() throws IOException, InvalidConfigException {
+	public static ServerConfig parseConfig(String configFilePath) throws IOException, InvalidConfigException {
 		ServerConfig config = new ServerConfig();
 		ParseState state = ParseState.NONE;
 		BufferedReader reader = new BufferedReader(new FileReader(configFilePath));
