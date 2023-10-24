@@ -1,36 +1,50 @@
-# CPSC 434 - Assignment 1, Part 1
+# HTTP Server Implemented in Java
+### Contributors: Bradley Lewis and Alex Shin
 
-## Team Members
+### Running the server
+The main server resides in `Server.java`. To run the server, navigate to the `HTTPServer` directory and run:
 
-- Bradley Lewis
-- Alex Shin
+`bash start.sh <config_file>`.
 
-## Getting started
+Where config_file is the path to a valid configuraton file, as per the [Apache standard](http://httpd.apache.org/docs/2.4/vhosts/examples.html).
 
-The shell script HttpServer.sh will compile and run the server. The server will run on port 8080.
+Running the file as such creates a management terminal that allows an operator to manage the server. The terminal currently supports the `shutdown` command, which will gracefull shut down a running instance of the HTTP server.
 
-To make the script executable, run the following command:
+## Repository structure
 
-```
-chmod +x HttpServer.sh
-```
+Below we outline the files within the project repository, as well as an overview of their function.
 
-Then, simply run the following command (shell script) to start the server:
+`/home`: A toy directory that stores files that are obtainable through GET requests to our server, provided that its absolute path on the machine running the server is provided as a virtual host in the provided configuration file.
 
-```
-./HttpServer.sh
-```
+`Cache.java`: Our server side caching implementation that will return cached file data if available and up to date.
 
-Once the server is running, you can test the server using `telnet`:
+`CacheEntry.java`: A simple class to represent a single entry in the server side cache.
 
-`telnet localhost 8080`
+`ConfigParser.java`: Parses and creates a hashmap from the configuration file provided, used by the server for virtual host mapping.
 
-Once telnet connects, you can send any message and it should respond back with a `200 OK` message.
+`HTAccessParser`: Parses .htaccess files and determines whether a client side request has the appropriate authorization headers and credentials set to fetch files from within directories with a `.htaccess` file.
 
-## Content Type
+`.httpd.config`: A sample configuration file.
 
-When there is a conflict between the Mime Type of the requested resource and the server-side resource, we elect to ignore the 'Accept' header and return the server-side resource in its original format for simplicity's sake. A more developed implementation may attempt content transformation here.
+`HttpRequest.java`: Represents a standard HTTP request.
 
-## Heartbeat
+`HTTPRequestHandler.java`: Main driver class that runs in a Thread to process incoming client requests.
 
-The HTTP Server also supports a heartbeat endpoint at `/load`. This endpoint will return a `200 OK` response if the server is able to process the request. However, if the server is overloaded, it will return a `503 Service Unavailable` response. This is achieved through the use of an Atomic counter that is incremented every time a request is received. If the counter exceeds the maximum number of requests (arbitratily set at 10), the server will return a `503 Service Unavailable` response.
+`HTTPResponse.java`: Represents a standard HTTP response.
+
+`HTTPServer.java`: Server driver class that creates a HTTP server to listen on the port specified in the configuration file.
+
+`ManagementThread.java`: Class that implements the Management terminal as described above.
+
+`MimeTypeResolver.java`: Resolves file extensions (e.g .jpg, .png) to their corresponding MIMETypes for HTTP responses and requests.
+
+`ServerConfig.java`: Class that represents configuration variables read in from the configuration file.
+
+`ServerState.java`: Class that represents the current state of the server.
+
+## Reflection 
+
+Whilst we were able to hit all major specification points, we were unable to fully implement `nSelectLoops`. 
+
+
+
