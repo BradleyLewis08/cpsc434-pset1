@@ -1,20 +1,25 @@
 #!/bin/bash
 
-# Check if exactly one argument has been provided
+# Check if an argument has been provided
 if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 <config_file>"
+    echo "Usage: $0 <config-file>"
     exit 1
 fi
 
-# Get the configuration file from the script arguments
-config_file="$1"
+# Your configuration file from the command line arguments
+CONFIG_FILE=$1
 
-# Check if the provided file exists
-if [ ! -f "$config_file" ]; then
-    echo "Error: Config file '$config_file' not found."
+# Ensure the file exists
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Config file '$CONFIG_FILE' not found."
     exit 1
 fi
 
-find -name "*.java" > sources.txt
+# Find all Java files and compile them
+find . -name "*.java" > sources.txt
 javac @sources.txt
-java HttpServer -config "$config_file"
+
+# Assuming your class files are in a directory structure that matches your package structure,
+# 'java' needs the package name to find the main class.
+# Also, ensure to provide the correct path for your config file if your current directory changes.
+java HttpServer -config $CONFIG_FILE
