@@ -5,6 +5,7 @@ public class ServerConfig {
 	private Map<String, String> virtualHosts = new HashMap<>(); // Map of serverName to rootDirectory
 	private String defaultRootDirectory;
 	private int CacheSize;
+	private int nSelectLoops;
 
 	public int getPort() {
 		return port;
@@ -22,6 +23,10 @@ public class ServerConfig {
 		return CacheSize;
 	}
 
+	public int getnSelectLoops() {
+		return nSelectLoops;
+	}
+
 	public void setPort(int port) {
 		this.port = port;
 	}
@@ -36,6 +41,10 @@ public class ServerConfig {
 
 	public void setCacheSize(int CacheSize) {
 		this.CacheSize = CacheSize;
+	}
+
+	public void setnSelectLoops(int nSelectLoops) {
+		this.nSelectLoops = nSelectLoops;
 	}
 
 	public boolean isVirtualHostsMapValid() {

@@ -1,6 +1,7 @@
 import java.io.*;
 import java.net.*;
-import java.util.Iterator;
+import java.util.*;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -43,7 +44,6 @@ public class HttpServer {
         Cache cache = new Cache(serverConfig.getCacheSize());
         ServerState serverState = new ServerState();
 
-        Dispatcher dispatcher = new Dispatcher(serverConfig, cache, serverState);
         ServerSocketChannel serverSocketChannel = openServerChannel(serverConfig.getPort());
 
         if (serverSocketChannel == null) {
@@ -51,13 +51,34 @@ public class HttpServer {
             System.exit(1);
         }
 
-        // // create management thread
+        // Main thread for accepting connections
+
+        int nSelectLoops = serverConfig.getnSelectLoops();
+
+        List<Dispatcher> dispatchers = new ArrayList<>();
+
+        ExecutorService executorService = Executors.newFixedThreadPool(serverConfig.getnSelectLoops());
+
+        for (int i = 0; i < nSelectLoops; i++) {
+            Dispatcher dispatcher = new Dispatcher(serverConfig, cache, serverState);
+            executorService.execute(dispatcher);
+            dispatchers.add(dispatcher);
+        }
+
+        int dispatcherIndex = 0;
+        while (serverState.isAcceptingRequests()) {
+            SocketChannel clientChannel = serverSocketChannel.accept(); // Accept new connections
+
+            if (clientChannel != null) {
+                clientChannel.configureBlocking(false);
+                dispatchers.get(dispatcherIndex % nSelectLoops).registerChannel(clientChannel);
+                dispatcherIndex++;
+            }
+        }
+
+        // Create executor service with n threads
+
         ManagementThread managementThread = new ManagementThread(serverState);
         managementThread.start();
-
-        serverSocketChannel.register(dispatcher.selector(), SelectionKey.OP_ACCEPT);
-
-        Thread dispatcherThread = new Thread(dispatcher);
-        dispatcherThread.start();
     }
 }

@@ -42,6 +42,8 @@ public class ConfigParser {
 					} else if (line.startsWith("<VirtualHost")) {
 						state = ParseState.VIRTUAL_HOST;
 						currVirtualHost = new VirtualHost();
+					} else if (line.startsWith("nSelectLoops")) {
+						config.setnSelectLoops(Integer.parseInt(line.split(" ")[1]));
 					} else {
 						throw new InvalidConfigException("Invalid config file: " + line);
 					}
@@ -68,6 +70,7 @@ public class ConfigParser {
 					break;
 			}
 		}
+		reader.close();
 		if (config.isValidConfig()) {
 			return config;
 		} else {

@@ -13,6 +13,8 @@ public class Dispatcher implements Runnable {
 	private Cache serverCache;
 	private ServerState serverState;
 
+	private static final int MAX_CONCURRENT_REQUESTS = 50;
+
 	public Dispatcher(ServerConfig config, Cache cache, ServerState state) {
 		// create selector
 		try {
@@ -26,6 +28,14 @@ public class Dispatcher implements Runnable {
 			System.exit(1);
 		} // end of catch
 	} // end of Dispatcher
+
+	public void registerChannel(SocketChannel channel) throws IOException {
+		if (channel == null) {
+			return; // could happen
+		}
+		channel.configureBlocking(false);
+		channel.register(selector, SelectionKey.OP_READ);
+	} // end of registerChannel
 
 	public Selector selector() {
 		return selector;
@@ -60,13 +70,12 @@ public class Dispatcher implements Runnable {
 					else if (key.isReadable()) {
 						SocketChannel channel = (SocketChannel) key.channel();
 						HttpRequest request = HttpRequestHandler.constructRequest(channel);
+						if (request == null) {
+							channel.close(); // Error occurred, close channel
+							continue;
+						}
 						HttpResponse response = HttpRequestHandler.constructResponse(request, serverConfig,
 								serverCache);
-						// Print the request
-						System.out.println("Request " + request);
-						System.out.println("Response " + response);
-
-						// Attach the response to the key
 						key.attach(response);
 
 						// Change the key's interest ops to WRITE
