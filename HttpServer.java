@@ -9,7 +9,6 @@ import java.nio.channels.*;
 
 public class HttpServer {
     public static AtomicInteger activeTasks = new AtomicInteger(0);
-    public static final int MAX_CONCURRENT_REQUESTS = 1;
     static String defaultRootDirectory = null;
 
     public static ServerSocketChannel openServerChannel(int port) {
@@ -71,6 +70,7 @@ public class HttpServer {
 
             if (clientChannel != null) {
                 clientChannel.configureBlocking(false);
+                System.out.println("Received connection from " + clientChannel);
                 dispatchers.get(dispatcherIndex % nSelectLoops).registerChannel(clientChannel);
                 dispatcherIndex++;
             }

@@ -2,6 +2,7 @@ import java.nio.channels.*;
 import java.io.IOException;
 import java.net.Socket;
 import java.util.*; // for Set and Iterator
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class Dispatcher implements Runnable {
 
@@ -12,8 +13,6 @@ public class Dispatcher implements Runnable {
 	private ServerConfig serverConfig;
 	private Cache serverCache;
 	private ServerState serverState;
-
-	private static final int MAX_CONCURRENT_REQUESTS = 50;
 
 	public Dispatcher(ServerConfig config, Cache cache, ServerState state) {
 		// create selector
@@ -75,7 +74,7 @@ public class Dispatcher implements Runnable {
 							continue;
 						}
 						HttpResponse response = HttpRequestHandler.constructResponse(request, serverConfig,
-								serverCache);
+								serverCache, serverState);
 						key.attach(response);
 
 						// Change the key's interest ops to WRITE

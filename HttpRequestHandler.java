@@ -261,19 +261,6 @@ public class HttpRequestHandler {
 	// URL is guaranteed to be relative path here
 	public static HttpResponse setResponseContent(String url, HttpRequest request, ServerConfig serverConfig,
 			Cache cache) {
-		// TODO - Add back
-		// if ("load".equals(url)) {
-		// // Check active tasks
-		// int activeTasks = HttpServer.activeTasks.get();
-		// int maxTasks = HttpServer.MAX_CONCURRENT_REQUESTS;
-
-		// if (activeTasks > maxTasks) {
-		// return HttpResponse.notAvailable();
-		// } else {
-		// return HttpResponse.heartbeat_ok();
-		// }
-		// }
-		// Handle some defaults here
 		boolean mobileRequest = false;
 		boolean fetchMobileFallback = false;
 
@@ -311,11 +298,10 @@ public class HttpRequestHandler {
 			if (!isAuthorized(pathName, headers, credentials)) {
 				return HttpResponse.unauthorized(credentials == null);
 			}
-			// TODO - Add back
-			// if (requestedFile.getName().endsWith(".cgi")) {
-			// // First check if the client can accept text/html in the first place
-			// return handleCGIRequest(requestedFile, request);
-			// }
+
+			if (requestedFile.getName().endsWith(".cgi")) {
+				return handleCGIRequest(requestedFile, request);
+			}
 			// Check if the file has been modified since the If-Modified-Since header
 			CacheEntry maybeEntry = cache.get(pathName);
 			long lastModified = requestedFile.lastModified();
@@ -360,11 +346,20 @@ public class HttpRequestHandler {
 		}
 	}
 
-	public static HttpResponse constructResponse(HttpRequest request, ServerConfig serverConfig, Cache cache) {
+	public static HttpResponse constructResponse(HttpRequest request, ServerConfig serverConfig, Cache cache,
+			ServerState serverState) {
 		String url = request.getPath();
 		// Ensure requested path is always relative to content root
 		if (url.startsWith("/")) {
 			url = url.substring(1);
+		}
+		if ("load".equals(url)) {
+			// Check active tasks
+			if (!serverState.canAcceptRequests()) {
+				return HttpResponse.notAvailable();
+			} else {
+				return HttpResponse.heartbeat_ok();
+			}
 		}
 		return setResponseContent(url, request, serverConfig, cache);
 	}
@@ -411,10 +406,59 @@ public class HttpRequestHandler {
 	// }
 	// }
 
+	private static ByteBuffer prepareChunkedHeaders(Map<String, String> headers) {
+		StringBuilder headerBuilder = new StringBuilder();
+		// Append status line and headers
+		headerBuilder.append("HTTP/1.1 200 OK\r\n");
+		for (Map.Entry<String, String> entry : headers.entrySet()) {
+			headerBuilder.append(entry.getKey()).append(": ").append(entry.getValue()).append("\r\n");
+		}
+		headerBuilder.append("\r\n");
+		return ByteBuffer.wrap(headerBuilder.toString().getBytes(StandardCharsets.UTF_8));
+	}
+
+	public static void sendChunkedResponse(SocketChannel clientChannel, HttpResponse response) {
+		try {
+			ByteBuffer headerBuffer = prepareChunkedHeaders(response.getHeaders());
+			clientChannel.write(headerBuffer); // Write headers
+
+			byte[] body = response.getBody();
+			ByteBuffer chunkBuffer;
+
+			int offset = 0;
+			while (offset < body.length) {
+				int chunkSize = Math.min(TRANSFER_ENCODING_CHUNK_SIZE, body.length - offset);
+				String chunkHeader = Integer.toHexString(chunkSize) + "\r\n";
+				chunkBuffer = ByteBuffer.wrap(chunkHeader.getBytes(StandardCharsets.UTF_8));
+				clientChannel.write(chunkBuffer); // Write chunk size
+
+				chunkBuffer = ByteBuffer.wrap(body, offset, chunkSize);
+				clientChannel.write(chunkBuffer); // Write chunk data
+
+				chunkBuffer = ByteBuffer.wrap("\r\n".getBytes(StandardCharsets.UTF_8));
+				clientChannel.write(chunkBuffer); // Write end of chunk
+
+				offset += chunkSize;
+			}
+
+			// Write final chunk
+			chunkBuffer = ByteBuffer.wrap("0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+			clientChannel.write(chunkBuffer);
+		} catch (Exception e) {
+			System.out.println("Error sending response: " + e.getMessage());
+			// Handle exception
+		}
+	}
+
 	public static void sendResponse(SocketChannel clientChannel, HttpResponse response)
 			throws SocketException, IOException {
 		// Convert the HttpResponse to a byte array
 		// Assuming you have a method in HttpResponse to get the byte representation
+		if (response.getHeaders().get("Transfer-Encoding") == "chunked") {
+			sendChunkedResponse(clientChannel, response);
+			return;
+		}
+
 		byte[] responseBytes = response.toString().getBytes(StandardCharsets.UTF_8);
 
 		// Wrap the byte array in a ByteBuffer
@@ -430,93 +474,58 @@ public class HttpRequestHandler {
 		}
 	}
 
-	// TODO - Add back
-	// public static HttpResponse handleCGIRequest(File cgiFile, HttpRequest
-	// request) {
-	// try {
-	// ProcessBuilder pb = new ProcessBuilder(cgiFile.getAbsolutePath());
-	// Map<String, String> env = pb.environment();
+	public static HttpResponse handleCGIRequest(File cgiFile, HttpRequest request) {
+		try {
+			ProcessBuilder pb = new ProcessBuilder(cgiFile.getAbsolutePath());
+			Map<String, String> env = pb.environment();
 
-	// env.put("QUERY_STRING", request.getQueryString());
-	// env.put("REQUEST_METHOD", request.getMethod());
+			env.put("QUERY_STRING", request.getQueryString());
+			env.put("REQUEST_METHOD", request.getMethod());
 
-	// if (request.isPostRequest()) {
-	// String contentLength = request.getHeaders().get(CONTENT_LENGTH_HEADER);
-	// if (contentLength != null) {
-	// env.put("CONTENT_LENGTH", contentLength);
-	// }
-	// String contentType = request.getHeaders().get("Content-Type");
-	// if (contentType != null) {
-	// env.put("CONTENT_TYPE", contentType);
-	// }
-	// }
+			if (request.isPostRequest()) {
+				String contentLength = request.getHeaders().get(CONTENT_LENGTH_HEADER);
+				if (contentLength != null) {
+					env.put("CONTENT_LENGTH", contentLength);
+				}
+				String contentType = request.getHeaders().get("Content-Type");
+				if (contentType != null) {
+					env.put("CONTENT_TYPE", contentType);
+				}
+			}
 
-	// Process process = pb.start();
+			Process process = pb.start();
 
-	// if (request.isPostRequest() && request.getBody() != null) {
-	// try (OutputStream cgiInput = process.getOutputStream()) {
-	// cgiInput.write(request.getBody().getBytes(StandardCharsets.UTF_8));
-	// cgiInput.flush();
-	// }
-	// }
+			if (request.isPostRequest() && request.getBody() != null) {
+				try (OutputStream cgiInput = process.getOutputStream()) {
+					cgiInput.write(request.getBody().getBytes(StandardCharsets.UTF_8));
+					cgiInput.flush();
+				}
+			}
 
-	// // Get the output from the CGI script
-	// byte[] outputBytes;
+			// Get the output from the CGI script
+			byte[] outputBytes;
 
-	// try (InputStream cgiOutput = process.getInputStream()) {
-	// InputStream errorStream = process.getErrorStream();
-	// if (errorStream.available() > 0) {
-	// return HttpResponse.internalServerError();
-	// }
-	// outputBytes = cgiOutput.readAllBytes();
-	// }
+			try (InputStream cgiOutput = process.getInputStream()) {
+				InputStream errorStream = process.getErrorStream();
+				if (errorStream.available() > 0) {
+					return HttpResponse.internalServerError();
+				}
+				outputBytes = cgiOutput.readAllBytes();
+			}
 
-	// int exitCode = process.waitFor();
+			int exitCode = process.waitFor();
 
-	// // Check if the CGI script returned an error
-	// if (exitCode != 0) {
-	// return HttpResponse.internalServerError();
-	// }
+			// Check if the CGI script returned an error
+			if (exitCode != 0) {
+				return HttpResponse.internalServerError();
+			}
 
-	// try {
-	// OutputStream out = clientSocket.getOutputStream();
-	// BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out));
-
-	// // Write the status line and headers
-	// writer.write("HTTP/1.1 200 OK\r\n");
-	// writer.write("Date: " + new Date() + "\r\n");
-	// writer.write("Server: MyHTTPServer\r\n");
-	// writer.write("Content-Type: text/html\r\n");
-	// writer.write("Transfer-Encoding: chunked\r\n");
-	// writer.write("\r\n"); // Write blank line between headers and body
-	// writer.flush();
-
-	// // Write the body
-	// int offset = 0;
-
-	// while (offset < outputBytes.length) {
-	// int chunkSize = Math.min(TRANSFER_ENCODING_CHUNK_SIZE, outputBytes.length -
-	// offset);
-	// out.write(Integer.toHexString(chunkSize).getBytes(StandardCharsets.UTF_8));
-	// // Send chunk size in
-	// // hex
-	// out.write("\r\n".getBytes(StandardCharsets.UTF_8));
-	// out.write(outputBytes, offset, chunkSize);
-	// out.write("\r\n".getBytes(StandardCharsets.UTF_8));
-	// offset += chunkSize;
-	// }
-	// // Final chunk
-	// out.write("0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
-	// out.flush();
-	// } catch (Exception e) {
-	// System.out.println("Error sending response: " + e.getMessage());
-	// return HttpResponse.internalServerError();
-	// }
-	// // Implement chunked transfer encoding
-	// return HttpResponse.ok(outputBytes, cgiFile.lastModified(), "text/html");
-	// } catch (Exception e) {
-	// System.out.println("Error handling CGI request: " + e.getMessage());
-	// return HttpResponse.internalServerError();
-	// }
-	// }
+			HttpResponse response = HttpResponse.ok(outputBytes, cgiFile.lastModified(), "text/html");
+			response.setTransferEncodingHeader("chunked");
+			return response;
+		} catch (Exception e) {
+			System.out.println("Error handling CGI request: " + e.getMessage());
+			return HttpResponse.internalServerError();
+		}
+	}
 }
