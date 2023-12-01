@@ -60,8 +60,17 @@ public class Dispatcher implements Runnable {
 						HttpRequest request = HttpRequestHandler.constructRequest(channel);
 						HttpResponse response = HttpRequestHandler.constructResponse(request, serverConfig,
 								serverCache);
-						// Print the request
-						System.out.println(response);
+
+						// Attach the response to the key
+						key.attach(response);
+
+						// Change the key's interest ops to WRITE
+						key.interestOps(SelectionKey.OP_WRITE);
+					} else if (key.isWritable()) {
+						SocketChannel channel = (SocketChannel) key.channel();
+						HttpResponse response = (HttpResponse) key.attachment();
+						HttpRequestHandler.sendResponse(channel, response);
+						channel.close();
 					}
 				} catch (IOException ex) {
 					key.cancel();

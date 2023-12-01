@@ -458,28 +458,22 @@ public class HttpRequestHandler {
 	// }
 	// }
 
-	public void sendResponse(HttpResponse response) throws SocketException, IOException {
-		OutputStream out = clientSocket.getOutputStream();
-		BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out));
+	public static void sendResponse(SocketChannel clientChannel, HttpResponse response)
+			throws SocketException, IOException {
+		// Convert the HttpResponse to a byte array
+		// Assuming you have a method in HttpResponse to get the byte representation
+		byte[] responseBytes = response.toString().getBytes(StandardCharsets.UTF_8);
 
-		// Write the status line
-		writer.write(response.getVersion() + " " + response.getStatusCode() + " " + response.getStatusMessage());
-		writer.newLine();
+		// Wrap the byte array in a ByteBuffer
+		ByteBuffer buffer = ByteBuffer.wrap(responseBytes);
 
-		// Write the headers
-		for (Map.Entry<String, String> entry : response.getHeaders().entrySet()) {
-			writer.write(entry.getKey() + ": " + entry.getValue());
-			writer.newLine();
-		}
-
-		// Blank line
-		writer.newLine();
-		writer.flush();
-
-		// Write the body
-		if (response.getBody() != null) {
-			out.write(response.getBody());
-			out.flush();
+		// Write the buffer to the channel
+		while (buffer.hasRemaining()) {
+			int bytesWritten = clientChannel.write(buffer);
+			if (bytesWritten <= 0) {
+				// Handle case where you can't write anymore
+				break;
+			}
 		}
 	}
 
