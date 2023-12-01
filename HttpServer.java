@@ -1,8 +1,10 @@
 import java.io.*;
 import java.net.*;
+import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.nio.channels.*;
 
 public class HttpServer {
     public static AtomicInteger activeTasks = new AtomicInteger(0);
@@ -10,6 +12,18 @@ public class HttpServer {
     private static final int CLIENT_TIMEOUT = 999999;
     private static final ServerState serverState = new ServerState();
     static String defaultRootDirectory = null;
+
+    public static ServerSocketChannel openServerChannel(int port) {
+        try {
+            ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
+            serverSocketChannel.socket().bind(new InetSocketAddress(port));
+            serverSocketChannel.configureBlocking(false);
+            return serverSocketChannel;
+        } catch (IOException e) {
+            System.out.println("Error opening server socket channel: " + e.getMessage());
+            return null;
+        }
+    }
 
     public static void main(String[] args) throws IOException {
         // create new server and client sockets
@@ -28,8 +42,10 @@ public class HttpServer {
             System.exit(1);
         }
 
-        ServerSocket serverSocket = new ServerSocket(serverConfig.getPort());
-        serverSocket.setSoTimeout(1000);
+        ServerSocketChannel serverSocketChannel = openServerChannel(serverConfig.getPort());
+
+        Selector selector = Selector.open();
+        serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
 
         // create cache
         Cache cache = new Cache(serverConfig.getCacheSize());
@@ -41,23 +57,23 @@ public class HttpServer {
         ExecutorService executorService = Executors.newFixedThreadPool(2);
 
         while (serverState.isAcceptingRequests()) {
-            try {
-                Socket clientSocket;
-                try {
-                    clientSocket = serverSocket.accept();
-                } catch (SocketTimeoutException e) {
-                    // Periodic timeout to check if server is still accepting requests
-                    continue;
+            // check to see if any events
+            selector.select(CLIENT_TIMEOUT);
+
+            Iterator<SelectionKey> selectedKeys = selector.selectedKeys().iterator();
+            while (selectedKeys.hasNext()) {
+                SelectionKey key = selectedKeys.next();
+                selectedKeys.remove();
+                if (key.isAcceptable()) {
+                    SocketChannel clientSocketChannel = serverSocketChannel.accept();
+                    clientSocketChannel.configureBlocking(false);
+                    clientSocketChannel.register(selector, SelectionKey.OP_READ);
+                } else if (key.isReadable()) {
+                    SocketChannel clientSocketChannel = (SocketChannel) key.channel();
+                    executorService.submit(new RequestHandler(clientSocketChannel, cache, serverState));
                 }
-                clientSocket.setSoTimeout(CLIENT_TIMEOUT);
-                // Handle incoming request
-                HttpRequestHandler requestHandlerTask = new HttpRequestHandler(clientSocket,
-                        serverConfig.getDefaultRootDirectory(),
-                        serverConfig.getVirtualHosts(), cache, serverState);
-                executorService.execute(requestHandlerTask);
-            } catch (Exception e) {
-                System.out.println("Error sending response: " + e.getMessage());
             }
+
         }
         executorService.shutdown();
         System.out.println("Waiting for all requests to finish...");

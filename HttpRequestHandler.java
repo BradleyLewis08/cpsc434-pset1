@@ -454,7 +454,6 @@ public class HttpRequestHandler implements Runnable {
 				return HttpResponse.internalServerError();
 			}
 			// Implement chunked transfer encoding
-
 			return HttpResponse.ok(outputBytes, cgiFile.lastModified(), "text/html");
 		} catch (Exception e) {
 			System.out.println("Error handling CGI request: " + e.getMessage());
