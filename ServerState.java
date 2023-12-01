@@ -13,6 +13,14 @@ public class ServerState {
         return activeTasks.get() < MAX_CONCURRENT_REQUESTS;
     }
 
+    public int incrementActiveTasks() {
+        return activeTasks.incrementAndGet();
+    }
+
+    public int decrementActiveTasks() {
+        return activeTasks.decrementAndGet();
+    }
+
     public boolean isAcceptingRequests() {
         return acceptingRequests;
     }

@@ -1,7 +1,6 @@
 import java.io.*;
 import java.net.*;
 import java.util.*;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -65,6 +64,10 @@ public class HttpServer {
         }
 
         int dispatcherIndex = 0;
+
+        ManagementThread managementThread = new ManagementThread(serverState);
+        managementThread.start();
+
         while (serverState.isAcceptingRequests()) {
             SocketChannel clientChannel = serverSocketChannel.accept(); // Accept new connections
 
@@ -74,10 +77,7 @@ public class HttpServer {
                 dispatcherIndex++;
             }
         }
-
+        executorService.shutdown();
         // Create executor service with n threads
-
-        ManagementThread managementThread = new ManagementThread(serverState);
-        managementThread.start();
     }
 }

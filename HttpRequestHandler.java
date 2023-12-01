@@ -1,7 +1,6 @@
 import java.io.*;
 import java.net.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.nio.*;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
@@ -12,13 +11,6 @@ import java.util.regex.*;
 import java.text.SimpleDateFormat;
 
 public class HttpRequestHandler {
-
-	private Socket clientSocket;
-	private String rootDirectory;
-	private boolean keepConnectionOpen = false; // Default to close
-	private Map<String, String> virtualHostMap = new HashMap<>(); // Map of serverName to rootDirectory
-	private Cache cache;
-	private String credentials = null;
 
 	// Header Constants
 	private static final String HOST_HEADER = "Host";

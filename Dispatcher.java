@@ -1,8 +1,6 @@
 import java.nio.channels.*;
 import java.io.IOException;
-import java.net.Socket;
 import java.util.*; // for Set and Iterator
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class Dispatcher implements Runnable {
 
@@ -65,6 +63,7 @@ public class Dispatcher implements Runnable {
 						SocketChannel client = server.accept();
 						client.configureBlocking(false);
 						client.register(selector, SelectionKey.OP_READ);
+						serverState.incrementActiveTasks();
 					} // end of isAcceptable
 					else if (key.isReadable()) {
 						SocketChannel channel = (SocketChannel) key.channel();
@@ -85,8 +84,10 @@ public class Dispatcher implements Runnable {
 						HttpRequestHandler.sendResponse(channel, response);
 
 						String connectionType = response.getHeaders().get("Connection");
-						if (connectionType == null || connectionType.equals("close")) {
+						if (connectionType == null || !connectionType.equals("keep-alive")) {
 							channel.close();
+							serverState.decrementActiveTasks();
+							key.cancel();
 						} else {
 							key.interestOps(SelectionKey.OP_READ);
 						}
@@ -95,7 +96,6 @@ public class Dispatcher implements Runnable {
 					key.cancel();
 					try {
 						key.channel().close();
-						// in a more general design, call have a handleException
 					} catch (IOException cex) {
 					}
 				} // end of catch
