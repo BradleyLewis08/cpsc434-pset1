@@ -11,12 +11,14 @@ public class Dispatcher implements Runnable {
 
 	private ServerConfig serverConfig;
 	private Cache serverCache;
+	private ServerState serverState;
 
-	public Dispatcher(ServerConfig config, Cache cache) {
+	public Dispatcher(ServerConfig config, Cache cache, ServerState state) {
 		// create selector
 		try {
 			serverConfig = config;
 			serverCache = cache;
+			serverState = state;
 			selector = Selector.open();
 		} catch (IOException ex) {
 			System.out.println("Cannot create selector.");
@@ -30,7 +32,7 @@ public class Dispatcher implements Runnable {
 	}
 
 	public void run() {
-		while (true) {
+		while (serverState.isAcceptingRequests()) {
 			try {
 				selector.select(TIMEOUT); // Block while checking for events
 			} catch (IOException ex) {
@@ -60,6 +62,9 @@ public class Dispatcher implements Runnable {
 						HttpRequest request = HttpRequestHandler.constructRequest(channel);
 						HttpResponse response = HttpRequestHandler.constructResponse(request, serverConfig,
 								serverCache);
+						// Print the request
+						System.out.println("Request " + request);
+						System.out.println("Response " + response);
 
 						// Attach the response to the key
 						key.attach(response);

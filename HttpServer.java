@@ -9,8 +9,6 @@ import java.nio.channels.*;
 public class HttpServer {
     public static AtomicInteger activeTasks = new AtomicInteger(0);
     public static final int MAX_CONCURRENT_REQUESTS = 1;
-    private static final int CLIENT_TIMEOUT = 999999;
-    private static final ServerState serverState = new ServerState();
     static String defaultRootDirectory = null;
 
     public static ServerSocketChannel openServerChannel(int port) {
@@ -43,8 +41,9 @@ public class HttpServer {
         }
 
         Cache cache = new Cache(serverConfig.getCacheSize());
+        ServerState serverState = new ServerState();
 
-        Dispatcher dispatcher = new Dispatcher(serverConfig, cache);
+        Dispatcher dispatcher = new Dispatcher(serverConfig, cache, serverState);
         ServerSocketChannel serverSocketChannel = openServerChannel(serverConfig.getPort());
 
         if (serverSocketChannel == null) {
@@ -53,21 +52,12 @@ public class HttpServer {
         }
 
         // // create management thread
-        // ManagementThread managementThread = new ManagementThread(serverState);
-        // managementThread.start();
+        ManagementThread managementThread = new ManagementThread(serverState);
+        managementThread.start();
 
         serverSocketChannel.register(dispatcher.selector(), SelectionKey.OP_ACCEPT);
 
         Thread dispatcherThread = new Thread(dispatcher);
         dispatcherThread.start();
-
-        // create cache
-        // executorService.shutdown();
-        // System.out.println("Waiting for all requests to finish...");
-        // while (!executorService.isTerminated()) {
-        // continue;
-        // }
-        // System.out.println("All tasks finished.");
-        // serverSocket.close();
     }
 }
