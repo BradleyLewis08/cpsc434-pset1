@@ -69,6 +69,10 @@ public class HttpResponse {
         headers.put("Content-Length", contentLength);
     }
 
+    public void setConnectionTypeHeader(String connectionType) {
+        headers.put("Connection", connectionType);
+    }
+
     public void setLastModifiedHeader(long lastModified) {
         Date lastModifiedDate = new Date(lastModified);
         SimpleDateFormat dateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US);

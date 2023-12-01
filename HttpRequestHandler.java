@@ -259,16 +259,32 @@ public class HttpRequestHandler {
 	}
 
 	// URL is guaranteed to be relative path here
+
+	private static HttpResponse addConnectionTypeHeader(HttpResponse response, boolean keepConnectionOpen) {
+		if (keepConnectionOpen) {
+			response.setConnectionTypeHeader("keep-alive");
+		}
+		return response;
+	}
+
 	public static HttpResponse setResponseContent(String url, HttpRequest request, ServerConfig serverConfig,
 			Cache cache) {
 		boolean mobileRequest = false;
 		boolean fetchMobileFallback = false;
+		boolean keepConnectionOpen = false;
 
 		Map<String, String> headers = request.getHeaders();
 
 		if (headers.containsKey(USER_AGENT_HEADER)) {
 			String userAgentHeader = headers.get(USER_AGENT_HEADER);
 			mobileRequest = maybeMobileRequest(userAgentHeader);
+		}
+
+		if (headers.containsKey(CONNECTION_HEADER)) {
+			String connectionHeader = headers.get(CONNECTION_HEADER);
+			if (connectionHeader.equals("keep-alive")) {
+				keepConnectionOpen = true;
+			}
 		}
 
 		if (url.equals("") || url.endsWith("/")) {
@@ -285,22 +301,22 @@ public class HttpRequestHandler {
 		String pathName = rootDirectory.endsWith("/") ? rootDirectory + url : rootDirectory + "/" + url;
 
 		if (isFileBeyondRoot(pathName, rootDirectory)) {
-			return HttpResponse.forbidden();
+			return addConnectionTypeHeader(HttpResponse.forbidden(), keepConnectionOpen);
 		}
 
 		File requestedFile = getFileIfExists(pathName, fetchMobileFallback);
 
 		if (requestedFile == null) {
-			return HttpResponse.notFound();
+			return addConnectionTypeHeader(HttpResponse.notFound(), keepConnectionOpen);
 		} else {
 			pathName = requestedFile.getPath();
 			String credentials = getRequestCredentials(headers);
 			if (!isAuthorized(pathName, headers, credentials)) {
-				return HttpResponse.unauthorized(credentials == null);
+				return addConnectionTypeHeader(HttpResponse.unauthorized(credentials == null), keepConnectionOpen);
 			}
 
 			if (requestedFile.getName().endsWith(".cgi")) {
-				return handleCGIRequest(requestedFile, request);
+				return handleCGIRequest(requestedFile, request, keepConnectionOpen);
 			}
 			// Check if the file has been modified since the If-Modified-Since header
 			CacheEntry maybeEntry = cache.get(pathName);
@@ -319,7 +335,7 @@ public class HttpRequestHandler {
 			boolean notModified = checkIfNotModified(headers, lastModified);
 
 			if (notModified) {
-				return HttpResponse.notModified();
+				return addConnectionTypeHeader(HttpResponse.notModified(), keepConnectionOpen);
 			}
 
 			try {
@@ -337,11 +353,11 @@ public class HttpRequestHandler {
 				List<String> acceptedMimeTypes = getAcceptedMimeTypes(headers);
 
 				if (!isMimeTypeAccepted(mimeType, acceptedMimeTypes)) {
-					return HttpResponse.notAcceptable();
+					return addConnectionTypeHeader(HttpResponse.notAcceptable(), keepConnectionOpen);
 				}
-				return HttpResponse.ok(data, lastModified, mimeType);
+				return addConnectionTypeHeader(HttpResponse.ok(data, lastModified, mimeType), keepConnectionOpen);
 			} catch (IOException e) {
-				return HttpResponse.internalServerError();
+				return addConnectionTypeHeader(HttpResponse.internalServerError(), keepConnectionOpen);
 			}
 		}
 	}
@@ -354,57 +370,20 @@ public class HttpRequestHandler {
 			url = url.substring(1);
 		}
 		if ("load".equals(url)) {
-			// Check active tasks
+			boolean keepConnectionOpen = false;
+			if (request.getHeaders().get("Connection") != null
+					&& request.getHeaders().get("Connection").equals("keep-alive")) {
+				keepConnectionOpen = true;
+			}
+
 			if (!serverState.canAcceptRequests()) {
-				return HttpResponse.notAvailable();
+				return addConnectionTypeHeader(HttpResponse.notAvailable(), keepConnectionOpen);
 			} else {
-				return HttpResponse.heartbeat_ok();
+				return addConnectionTypeHeader(HttpResponse.heartbeat_ok(), keepConnectionOpen);
 			}
 		}
 		return setResponseContent(url, request, serverConfig, cache);
 	}
-
-	// @Override
-	// public void run() {
-	// try {
-	// do {
-	// HttpRequest request = constructRequest();
-	// if (request == null) {
-	// System.out.println("Null request");
-	// continue;
-	// }
-	// // check if server is at capacity
-	// if (HttpServer.activeTasks.getAndIncrement() >=
-	// HttpServer.MAX_CONCURRENT_REQUESTS) {
-	// HttpServer.activeTasks.decrementAndGet();
-	// HttpResponseSender.sendResponse(HttpResponse.notAvailable(),
-	// clientSocket.getOutputStream());
-	// clientSocket.close();
-	// return;
-	// }
-	// HttpResponse response = constructResponse(request);
-	// try {
-	// HttpResponseSender.sendResponse(response, clientSocket.getOutputStream());
-	// } catch (IOException e) {
-	// keepConnectionOpen = false;
-	// }
-	// if (!keepConnectionOpen) {
-	// clientSocket.close();
-	// }
-	// } while (keepConnectionOpen && !clientSocket.isClosed());
-	// } catch (SocketTimeoutException e) {
-	// try {
-	// clientSocket.close();
-	// } catch (Exception ex) {
-	// System.out.println("Error closing socket: " + ex.getMessage());
-	// }
-	// } catch (Exception e) {
-	// System.out.println("Error handling request: " + e.getMessage());
-	// keepConnectionOpen = false;
-	// } finally {
-	// HttpServer.activeTasks.decrementAndGet();
-	// }
-	// }
 
 	private static ByteBuffer prepareChunkedHeaders(Map<String, String> headers) {
 		StringBuilder headerBuilder = new StringBuilder();
@@ -474,7 +453,7 @@ public class HttpRequestHandler {
 		}
 	}
 
-	public static HttpResponse handleCGIRequest(File cgiFile, HttpRequest request) {
+	public static HttpResponse handleCGIRequest(File cgiFile, HttpRequest request, boolean keepConnectionOpen) {
 		try {
 			ProcessBuilder pb = new ProcessBuilder(cgiFile.getAbsolutePath());
 			Map<String, String> env = pb.environment();
@@ -517,15 +496,15 @@ public class HttpRequestHandler {
 
 			// Check if the CGI script returned an error
 			if (exitCode != 0) {
-				return HttpResponse.internalServerError();
+				return addConnectionTypeHeader(HttpResponse.internalServerError(), keepConnectionOpen);
 			}
 
 			HttpResponse response = HttpResponse.ok(outputBytes, cgiFile.lastModified(), "text/html");
 			response.setTransferEncodingHeader("chunked");
-			return response;
+			return addConnectionTypeHeader(response, keepConnectionOpen);
 		} catch (Exception e) {
 			System.out.println("Error handling CGI request: " + e.getMessage());
-			return HttpResponse.internalServerError();
+			return addConnectionTypeHeader(HttpResponse.internalServerError(), keepConnectionOpen);
 		}
 	}
 }
