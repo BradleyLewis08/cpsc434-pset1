@@ -42,7 +42,9 @@ public class HttpServer {
             System.exit(1);
         }
 
-        Dispatcher dispatcher = new Dispatcher();
+        Cache cache = new Cache(serverConfig.getCacheSize());
+
+        Dispatcher dispatcher = new Dispatcher(serverConfig, cache);
         ServerSocketChannel serverSocketChannel = openServerChannel(serverConfig.getPort());
 
         if (serverSocketChannel == null) {
@@ -53,8 +55,6 @@ public class HttpServer {
         // // create management thread
         // ManagementThread managementThread = new ManagementThread(serverState);
         // managementThread.start();
-
-        Cache cache = new Cache(serverConfig.getCacheSize());
 
         serverSocketChannel.register(dispatcher.selector(), SelectionKey.OP_ACCEPT);
 

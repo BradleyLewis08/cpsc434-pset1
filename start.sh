@@ -16,6 +16,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 # Find all Java files and compile them
+rm $(find . -name "*.class")
 find . -name "*.java" > sources.txt
 javac @sources.txt
 

@@ -7,7 +7,20 @@ public class HttpResponse {
     private String statusMessage;
     private Map<String, String> headers = new HashMap<>();
     private byte[] body;
-    // private byte[] body;
+
+    // toString() method for debugging
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(version + " " + statusCode + " " + statusMessage + "\r\n");
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            sb.append(entry.getKey() + ": " + entry.getValue() + "\r\n");
+        }
+        sb.append("\r\n");
+        if (body != null) {
+            sb.append(new String(body));
+        }
+        return sb.toString();
+    }
 
     public String getVersion() {
         return this.version;

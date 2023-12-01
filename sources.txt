@@ -5,8 +5,11 @@
 ./ServerState.java
 ./CacheEntry.java
 ./MimeTypeResolver.java
+./Dispatcher.java
+./App.java
 ./ManagementThread.java
 ./ServerConfig.java
+./RequestResponseHandler.java
 ./HttpRequest.java
 ./ConfigParser.java
 ./HttpResponse.java

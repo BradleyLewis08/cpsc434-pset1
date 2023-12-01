@@ -9,9 +9,14 @@ public class Dispatcher implements Runnable {
 
 	private Selector selector;
 
-	public Dispatcher() {
+	private ServerConfig serverConfig;
+	private Cache serverCache;
+
+	public Dispatcher(ServerConfig config, Cache cache) {
 		// create selector
 		try {
+			serverConfig = config;
+			serverCache = cache;
 			selector = Selector.open();
 		} catch (IOException ex) {
 			System.out.println("Cannot create selector.");
@@ -53,8 +58,10 @@ public class Dispatcher implements Runnable {
 					else if (key.isReadable()) {
 						SocketChannel channel = (SocketChannel) key.channel();
 						HttpRequest request = HttpRequestHandler.constructRequest(channel);
+						HttpResponse response = HttpRequestHandler.constructResponse(request, serverConfig,
+								serverCache);
 						// Print the request
-						System.out.println(request);
+						System.out.println(response);
 					}
 				} catch (IOException ex) {
 					key.cancel();

@@ -29,22 +29,7 @@ public class HttpRequestHandler {
 	private static final String AUTHORIZATION_HEADER = "Authorization";
 	private static final String CONTENT_LENGTH_HEADER = "Content-Length";
 
-	private boolean mobileRequest = false; // Is the request from a mobile device?
-	private boolean fetchMobileFallback = false; // If URL is not specified for mobile device, we should fallback to
-													// search for index.html before returning 404
-
 	private static int TRANSFER_ENCODING_CHUNK_SIZE = 1024;
-
-	Date ifModifiedSinceDate = null;
-	List<String> acceptedMimeTypes = new ArrayList<>();
-
-	public HttpRequestHandler(Socket clientSocket, String rootDirectory, Map<String, String> virtualHostMap,
-			Cache cache, ServerState serverState) {
-		this.clientSocket = clientSocket;
-		this.rootDirectory = rootDirectory;
-		this.virtualHostMap = virtualHostMap;
-		this.cache = cache;
-	}
 
 	private static String maybeRemoveLeadingSlash(String path) {
 		if (path.startsWith("/")) {
@@ -53,16 +38,13 @@ public class HttpRequestHandler {
 		return path;
 	}
 
-	private void maybeSetMobileRequest(String userAgent) {
+	private static boolean maybeMobileRequest(String userAgent) {
 		Pattern MOBILE_PATTERN = Pattern.compile(".*(iPhone|Android|Mobile|webOS).*", Pattern.CASE_INSENSITIVE);
 		Matcher matcher = MOBILE_PATTERN.matcher(userAgent);
-
-		if (matcher.matches()) {
-			mobileRequest = true;
-		}
+		return matcher.matches();
 	}
 
-	private boolean isFileBeyondRoot(String path) {
+	private static boolean isFileBeyondRoot(String path, String rootDirectory) {
 		try {
 			String docRoot = new File(rootDirectory).getCanonicalPath();
 			String requestedFile = new File(path).getCanonicalPath();
@@ -209,7 +191,7 @@ public class HttpRequestHandler {
 		return request;
 	}
 
-	private File getFileIfExists(String pathName) {
+	private static File getFileIfExists(String pathName, boolean fetchMobileFallback) {
 		File requestedFile = new File(pathName);
 		if (!requestedFile.exists()) {
 			if (fetchMobileFallback) {
@@ -225,11 +207,23 @@ public class HttpRequestHandler {
 		return requestedFile;
 	}
 
-	public boolean isMimeTypeAccepted(String mimeType) {
+	public static boolean isMimeTypeAccepted(String mimeType, List<String> acceptedMimeTypes) {
 		return acceptedMimeTypes.isEmpty() || acceptedMimeTypes.contains(mimeType);
 	}
 
-	public boolean isAuthorized(String pathName) {
+	public static String getRequestCredentials(Map<String, String> headers) {
+		String credentials = null;
+		if (headers.containsKey(AUTHORIZATION_HEADER)) {
+			String authHeader = headers.get(AUTHORIZATION_HEADER);
+			String[] authParts = authHeader.split(" ");
+			if (authParts.length == 2 && authParts[0].equals("Basic")) {
+				credentials = authParts[1];
+			}
+		}
+		return credentials;
+	}
+
+	public static boolean isAuthorized(String pathName, Map<String, String> headers, String credentials) {
 		try {
 			// Get the directory of the file
 			Path filePath = Paths.get(pathName).toAbsolutePath();
@@ -258,20 +252,86 @@ public class HttpRequestHandler {
 		return true;
 	}
 
-	// URL is guaranteed to be relative path here
-	public HttpResponse setResponseContent(String url, HttpResponse response, HttpRequest request) {
-		if ("load".equals(url)) {
-			// Check active tasks
-			int activeTasks = HttpServer.activeTasks.get();
-			int maxTasks = HttpServer.MAX_CONCURRENT_REQUESTS;
-
-			if (activeTasks > maxTasks) {
-				return HttpResponse.notAvailable();
-			} else {
-				return HttpResponse.heartbeat_ok();
+	private static String getRootDirectory(Map<String, String> headers, ServerConfig serverConfig) {
+		String rootDirectory = serverConfig.getDefaultRootDirectory();
+		if (headers.containsKey(HOST_HEADER)) {
+			Map<String, String> virtualHostsMap = serverConfig.getVirtualHosts();
+			String hostHeader = headers.get(HOST_HEADER);
+			String[] hostParts = hostHeader.split(":");
+			String serverName = hostParts[0];
+			if (virtualHostsMap.containsKey(serverName)) {
+				rootDirectory = virtualHostsMap.get(serverName);
 			}
 		}
+		return rootDirectory;
+	}
+
+	private static Boolean checkIfNotModified(Map<String, String> headers, long lastModified) {
+		Date ifModifiedSinceDate = null;
+		if (headers.containsKey(IF_MODIFIED_SINCE_HEADER)) {
+			SimpleDateFormat format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:sszzz", Locale.US);
+			format.setTimeZone(TimeZone.getTimeZone("GMT"));
+			try {
+				ifModifiedSinceDate = format.parse(headers.get(IF_MODIFIED_SINCE_HEADER));
+			} catch (Exception e) {
+				// Ignore the header if it is malformed
+				System.out.println("Error parsing date, ignoring If-Modified-Since header " + e.getMessage());
+			}
+		}
+
+		if (ifModifiedSinceDate != null && lastModified <= ifModifiedSinceDate.getTime()) {
+			if (lastModified <= ifModifiedSinceDate.getTime()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static List<String> getAcceptedMimeTypes(Map<String, String> headers) {
+		List<String> acceptedMimeTypes = new ArrayList<>();
+		if (headers.containsKey(ACCEPT_HEADER)) {
+			String acceptHeader = headers.get(ACCEPT_HEADER);
+			// Create a list of accepted mime types
+			String[] acceptParts = acceptHeader.split(",");
+			for (String acceptPart : acceptParts) {
+				String[] acceptPartParts = acceptPart.split(";");
+				if (acceptPartParts[0].trim().equals("*/*")) {
+					acceptedMimeTypes.clear();
+					break;
+				} else {
+					acceptedMimeTypes.add(acceptPartParts[0].trim());
+				}
+			}
+		}
+		return acceptedMimeTypes;
+	}
+
+	// URL is guaranteed to be relative path here
+	public static HttpResponse setResponseContent(String url, HttpRequest request, ServerConfig serverConfig,
+			Cache cache) {
+		// TODO - Add back
+		// if ("load".equals(url)) {
+		// // Check active tasks
+		// int activeTasks = HttpServer.activeTasks.get();
+		// int maxTasks = HttpServer.MAX_CONCURRENT_REQUESTS;
+
+		// if (activeTasks > maxTasks) {
+		// return HttpResponse.notAvailable();
+		// } else {
+		// return HttpResponse.heartbeat_ok();
+		// }
+		// }
 		// Handle some defaults here
+		boolean mobileRequest = false;
+		boolean fetchMobileFallback = false;
+
+		Map<String, String> headers = request.getHeaders();
+
+		if (headers.containsKey(USER_AGENT_HEADER)) {
+			String userAgentHeader = headers.get(USER_AGENT_HEADER);
+			mobileRequest = maybeMobileRequest(userAgentHeader);
+		}
+
 		if (url.equals("") || url.endsWith("/")) {
 			if (mobileRequest) {
 				url = url + "index_m.html";
@@ -281,26 +341,29 @@ public class HttpRequestHandler {
 			}
 		}
 
+		String rootDirectory = getRootDirectory(headers, serverConfig);
+
 		String pathName = rootDirectory.endsWith("/") ? rootDirectory + url : rootDirectory + "/" + url;
 
-		if (isFileBeyondRoot(pathName)) {
+		if (isFileBeyondRoot(pathName, rootDirectory)) {
 			return HttpResponse.forbidden();
 		}
 
-		File requestedFile = getFileIfExists(pathName);
+		File requestedFile = getFileIfExists(pathName, fetchMobileFallback);
 
 		if (requestedFile == null) {
 			return HttpResponse.notFound();
 		} else {
 			pathName = requestedFile.getPath();
-			if (!isAuthorized(pathName)) {
+			String credentials = getRequestCredentials(headers);
+			if (!isAuthorized(pathName, headers, credentials)) {
 				return HttpResponse.unauthorized(credentials == null);
 			}
-			// We now check if the file is a CGI script
-			if (requestedFile.getName().endsWith(".cgi")) {
-				// First check if the client can accept text/html in the first place
-				return handleCGIRequest(requestedFile, request);
-			}
+			// TODO - Add back
+			// if (requestedFile.getName().endsWith(".cgi")) {
+			// // First check if the client can accept text/html in the first place
+			// return handleCGIRequest(requestedFile, request);
+			// }
 			// Check if the file has been modified since the If-Modified-Since header
 			CacheEntry maybeEntry = cache.get(pathName);
 			long lastModified = requestedFile.lastModified();
@@ -315,10 +378,10 @@ public class HttpRequestHandler {
 				}
 			}
 
-			if (ifModifiedSinceDate != null && lastModified <= ifModifiedSinceDate.getTime()) {
-				if (lastModified <= ifModifiedSinceDate.getTime()) {
-					return HttpResponse.notModified();
-				}
+			boolean notModified = checkIfNotModified(headers, lastModified);
+
+			if (notModified) {
+				return HttpResponse.notModified();
 			}
 
 			try {
@@ -332,7 +395,9 @@ public class HttpRequestHandler {
 				}
 				String mimeType = MimeTypeResolver.getMimeType(requestedFile.getName());
 				// Strict adherence to Accept header
-				if (!isMimeTypeAccepted(mimeType)) {
+				List<String> acceptedMimeTypes = getAcceptedMimeTypes(headers);
+
+				if (!isMimeTypeAccepted(mimeType, acceptedMimeTypes)) {
 					return HttpResponse.notAcceptable();
 				}
 				return HttpResponse.ok(data, lastModified, mimeType);
@@ -342,15 +407,13 @@ public class HttpRequestHandler {
 		}
 	}
 
-	public HttpResponse constructResponse(HttpRequest request) {
-		HttpResponse response = new HttpResponse();
-
+	public static HttpResponse constructResponse(HttpRequest request, ServerConfig serverConfig, Cache cache) {
 		String url = request.getPath();
 		// Ensure requested path is always relative to content root
 		if (url.startsWith("/")) {
 			url = url.substring(1);
 		}
-		return setResponseContent(url, response, request);
+		return setResponseContent(url, request, serverConfig, cache);
 	}
 
 	// @Override
@@ -420,89 +483,93 @@ public class HttpRequestHandler {
 		}
 	}
 
-	public HttpResponse handleCGIRequest(File cgiFile, HttpRequest request) {
-		try {
-			ProcessBuilder pb = new ProcessBuilder(cgiFile.getAbsolutePath());
-			Map<String, String> env = pb.environment();
+	// TODO - Add back
+	// public static HttpResponse handleCGIRequest(File cgiFile, HttpRequest
+	// request) {
+	// try {
+	// ProcessBuilder pb = new ProcessBuilder(cgiFile.getAbsolutePath());
+	// Map<String, String> env = pb.environment();
 
-			env.put("QUERY_STRING", request.getQueryString());
-			env.put("REQUEST_METHOD", request.getMethod());
+	// env.put("QUERY_STRING", request.getQueryString());
+	// env.put("REQUEST_METHOD", request.getMethod());
 
-			if (request.isPostRequest()) {
-				String contentLength = request.getHeaders().get(CONTENT_LENGTH_HEADER);
-				if (contentLength != null) {
-					env.put("CONTENT_LENGTH", contentLength);
-				}
-				String contentType = request.getHeaders().get("Content-Type");
-				if (contentType != null) {
-					env.put("CONTENT_TYPE", contentType);
-				}
-			}
+	// if (request.isPostRequest()) {
+	// String contentLength = request.getHeaders().get(CONTENT_LENGTH_HEADER);
+	// if (contentLength != null) {
+	// env.put("CONTENT_LENGTH", contentLength);
+	// }
+	// String contentType = request.getHeaders().get("Content-Type");
+	// if (contentType != null) {
+	// env.put("CONTENT_TYPE", contentType);
+	// }
+	// }
 
-			Process process = pb.start();
+	// Process process = pb.start();
 
-			if (request.isPostRequest() && request.getBody() != null) {
-				try (OutputStream cgiInput = process.getOutputStream()) {
-					cgiInput.write(request.getBody().getBytes(StandardCharsets.UTF_8));
-					cgiInput.flush();
-				}
-			}
+	// if (request.isPostRequest() && request.getBody() != null) {
+	// try (OutputStream cgiInput = process.getOutputStream()) {
+	// cgiInput.write(request.getBody().getBytes(StandardCharsets.UTF_8));
+	// cgiInput.flush();
+	// }
+	// }
 
-			// Get the output from the CGI script
-			byte[] outputBytes;
+	// // Get the output from the CGI script
+	// byte[] outputBytes;
 
-			try (InputStream cgiOutput = process.getInputStream()) {
-				InputStream errorStream = process.getErrorStream();
-				if (errorStream.available() > 0) {
-					return HttpResponse.internalServerError();
-				}
-				outputBytes = cgiOutput.readAllBytes();
-			}
+	// try (InputStream cgiOutput = process.getInputStream()) {
+	// InputStream errorStream = process.getErrorStream();
+	// if (errorStream.available() > 0) {
+	// return HttpResponse.internalServerError();
+	// }
+	// outputBytes = cgiOutput.readAllBytes();
+	// }
 
-			int exitCode = process.waitFor();
+	// int exitCode = process.waitFor();
 
-			// Check if the CGI script returned an error
-			if (exitCode != 0) {
-				return HttpResponse.internalServerError();
-			}
+	// // Check if the CGI script returned an error
+	// if (exitCode != 0) {
+	// return HttpResponse.internalServerError();
+	// }
 
-			try {
-				OutputStream out = clientSocket.getOutputStream();
-				BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out));
+	// try {
+	// OutputStream out = clientSocket.getOutputStream();
+	// BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out));
 
-				// Write the status line and headers
-				writer.write("HTTP/1.1 200 OK\r\n");
-				writer.write("Date: " + new Date() + "\r\n");
-				writer.write("Server: MyHTTPServer\r\n");
-				writer.write("Content-Type: text/html\r\n");
-				writer.write("Transfer-Encoding: chunked\r\n");
-				writer.write("\r\n"); // Write blank line between headers and body
-				writer.flush();
+	// // Write the status line and headers
+	// writer.write("HTTP/1.1 200 OK\r\n");
+	// writer.write("Date: " + new Date() + "\r\n");
+	// writer.write("Server: MyHTTPServer\r\n");
+	// writer.write("Content-Type: text/html\r\n");
+	// writer.write("Transfer-Encoding: chunked\r\n");
+	// writer.write("\r\n"); // Write blank line between headers and body
+	// writer.flush();
 
-				// Write the body
-				int offset = 0;
+	// // Write the body
+	// int offset = 0;
 
-				while (offset < outputBytes.length) {
-					int chunkSize = Math.min(TRANSFER_ENCODING_CHUNK_SIZE, outputBytes.length - offset);
-					out.write(Integer.toHexString(chunkSize).getBytes(StandardCharsets.UTF_8)); // Send chunk size in
-																								// hex
-					out.write("\r\n".getBytes(StandardCharsets.UTF_8));
-					out.write(outputBytes, offset, chunkSize);
-					out.write("\r\n".getBytes(StandardCharsets.UTF_8));
-					offset += chunkSize;
-				}
-				// Final chunk
-				out.write("0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
-				out.flush();
-			} catch (Exception e) {
-				System.out.println("Error sending response: " + e.getMessage());
-				return HttpResponse.internalServerError();
-			}
-			// Implement chunked transfer encoding
-			return HttpResponse.ok(outputBytes, cgiFile.lastModified(), "text/html");
-		} catch (Exception e) {
-			System.out.println("Error handling CGI request: " + e.getMessage());
-			return HttpResponse.internalServerError();
-		}
-	}
+	// while (offset < outputBytes.length) {
+	// int chunkSize = Math.min(TRANSFER_ENCODING_CHUNK_SIZE, outputBytes.length -
+	// offset);
+	// out.write(Integer.toHexString(chunkSize).getBytes(StandardCharsets.UTF_8));
+	// // Send chunk size in
+	// // hex
+	// out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+	// out.write(outputBytes, offset, chunkSize);
+	// out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+	// offset += chunkSize;
+	// }
+	// // Final chunk
+	// out.write("0\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+	// out.flush();
+	// } catch (Exception e) {
+	// System.out.println("Error sending response: " + e.getMessage());
+	// return HttpResponse.internalServerError();
+	// }
+	// // Implement chunked transfer encoding
+	// return HttpResponse.ok(outputBytes, cgiFile.lastModified(), "text/html");
+	// } catch (Exception e) {
+	// System.out.println("Error handling CGI request: " + e.getMessage());
+	// return HttpResponse.internalServerError();
+	// }
+	// }
 }
