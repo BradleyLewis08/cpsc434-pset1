@@ -70,7 +70,6 @@ public class HttpServer {
 
             if (clientChannel != null) {
                 clientChannel.configureBlocking(false);
-                System.out.println("Received connection from " + clientChannel);
                 dispatchers.get(dispatcherIndex % nSelectLoops).registerChannel(clientChannel);
                 dispatcherIndex++;
             }

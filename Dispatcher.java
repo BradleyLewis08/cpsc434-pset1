@@ -75,15 +75,31 @@ public class Dispatcher implements Runnable {
 						}
 						HttpResponse response = HttpRequestHandler.constructResponse(request, serverConfig,
 								serverCache, serverState);
-						key.attach(response);
+
+						Map<String, Object> responseInfo = new HashMap<>();
+						responseInfo.put("response", response);
+						responseInfo.put("Connection", request.getHeaders().get("Connection"));
+
+						key.attach(responseInfo);
 
 						// Change the key's interest ops to WRITE
 						key.interestOps(SelectionKey.OP_WRITE);
 					} else if (key.isWritable()) {
 						SocketChannel channel = (SocketChannel) key.channel();
-						HttpResponse response = (HttpResponse) key.attachment();
+						Map<String, Object> responseInfo = (Map<String, Object>) key.attachment();
+						HttpResponse response = (HttpResponse) responseInfo.get("response");
+						String connectionType = (String) responseInfo.get("Connection");
+
 						HttpRequestHandler.sendResponse(channel, response);
-						channel.close();
+
+						System.out.println("Response sent to client: " + response.toString() + "\n");
+
+						if (connectionType == null || connectionType.equals("close")) {
+							channel.close();
+						} else {
+							System.out.println("Keep-alive connection");
+							key.interestOps(SelectionKey.OP_READ);
+						}
 					}
 				} catch (IOException ex) {
 					key.cancel();

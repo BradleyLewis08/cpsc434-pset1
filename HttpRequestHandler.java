@@ -325,13 +325,13 @@ public class HttpRequestHandler {
 			try {
 				byte[] data = null;
 				data = Files.readAllBytes(requestedFile.toPath());
-				// if (maybeEntry != null) {
-				// // if file is in cache, there is no need to read from disk
-				// data = maybeEntry.getContent();
-				// } else {
-				// data = Files.readAllBytes(requestedFile.toPath());
-				// cache.put(pathName, data); // add to cache
-				// }
+				if (maybeEntry != null) {
+					// if file is in cache, there is no need to read from disk
+					data = maybeEntry.getContent();
+				} else {
+					data = Files.readAllBytes(requestedFile.toPath());
+					cache.put(pathName, data); // add to cache
+				}
 				String mimeType = MimeTypeResolver.getMimeType(requestedFile.getName());
 				// Strict adherence to Accept header
 				List<String> acceptedMimeTypes = getAcceptedMimeTypes(headers);
