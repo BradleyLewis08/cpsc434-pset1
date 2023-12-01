@@ -3,6 +3,7 @@ import java.net.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.nio.*;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,7 +11,7 @@ import java.nio.file.Paths;
 import java.util.regex.*;
 import java.text.SimpleDateFormat;
 
-public class HttpRequestHandler implements Runnable {
+public class HttpRequestHandler {
 
 	private Socket clientSocket;
 	private String rootDirectory;
@@ -45,7 +46,7 @@ public class HttpRequestHandler implements Runnable {
 		this.cache = cache;
 	}
 
-	private String maybeRemoveLeadingSlash(String path) {
+	private static String maybeRemoveLeadingSlash(String path) {
 		if (path.startsWith("/")) {
 			return path.substring(1);
 		}
@@ -72,18 +73,39 @@ public class HttpRequestHandler implements Runnable {
 		}
 	}
 
-	public HttpRequest constructRequest() throws IOException {
-		BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-		String requestLine = in.readLine();
-		String[] requestParts = requestLine.split(" ");
-		String method = requestParts[0];
-		String path = maybeRemoveLeadingSlash(requestParts[1]);
-		String version = requestParts[2];
+	public static HttpRequest constructRequest(SocketChannel channel) throws IOException {
+		ByteBuffer buffer = ByteBuffer.allocate(4096);
+		int bytesRead = channel.read(buffer);
+		if (bytesRead == -1) {
+			return null;
+		}
+
+		buffer.flip();
+
+		String requestString = StandardCharsets.UTF_8.decode(buffer).toString();
+
+		// Break the request into lines
+		String[] requestParts = requestString.split("\r\n");
+
+		// Process the request line
+		String requestLine = requestParts[0];
+
+		String[] requestLineParts = requestLine.split(" ");
+
+		if (requestParts.length < 3) {
+			return null; // Invalid request
+		}
+
+		String method = requestLineParts[0];
+		String path = maybeRemoveLeadingSlash(requestLineParts[1]);
+		String version = requestLineParts[2];
 
 		// Parse the headers
 		Map<String, String> headers = new HashMap<>();
+		int lineIndex = 1;
 		String headerLine;
-		while ((headerLine = in.readLine()) != null && !headerLine.isEmpty()) {
+
+		while (lineIndex < requestParts.length && !(headerLine = requestParts[lineIndex++]).isEmpty()) {
 			String[] headerParts = headerLine.split(": ");
 			headers.put(headerParts[0], headerParts[1]);
 		}
@@ -92,67 +114,88 @@ public class HttpRequestHandler implements Runnable {
 		String body = null;
 		if (headers.containsKey(CONTENT_LENGTH_HEADER)) {
 			int contentLength = Integer.parseInt(headers.get(CONTENT_LENGTH_HEADER));
-			char[] bodyChars = new char[contentLength];
-			in.read(bodyChars, 0, contentLength);
-			body = new String(bodyChars);
-		}
 
-		if (headers.containsKey(CONNECTION_HEADER)) {
-			String connectionHeader = headers.get(CONNECTION_HEADER);
-			if (connectionHeader.equals("keep-alive")) {
-				keepConnectionOpen = true;
-			} else if (connectionHeader.equals("close")) {
-				keepConnectionOpen = false;
-			}
-		}
+			int bodyStartIndex = requestString.indexOf("\r\n\r\n") + 4; // Skip the blank lines between headers and body
 
-		if (headers.containsKey(HOST_HEADER)) {
-			String hostHeader = headers.get(HOST_HEADER);
-			String[] hostParts = hostHeader.split(":");
-			String serverName = hostParts[0];
-			if (virtualHostMap.containsKey(serverName)) {
-				rootDirectory = virtualHostMap.get(serverName);
-			}
-		}
+			if (requestString.length() >= bodyStartIndex + contentLength) {
+				body = requestString.substring(bodyStartIndex, bodyStartIndex + contentLength);
+			} else { // Body is not fully read yet, attempt to read the rest of the body from the
+						// channel
+				StringBuilder bodyBuilder = new StringBuilder();
 
-		if (headers.containsKey(USER_AGENT_HEADER)) {
-			String userAgentHeader = headers.get(USER_AGENT_HEADER);
-			maybeSetMobileRequest(userAgentHeader);
-		}
-
-		if (headers.containsKey(IF_MODIFIED_SINCE_HEADER)) {
-			SimpleDateFormat format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US);
-			format.setTimeZone(TimeZone.getTimeZone("GMT"));
-			try {
-				ifModifiedSinceDate = format.parse(headers.get(IF_MODIFIED_SINCE_HEADER));
-			} catch (Exception e) {
-				// Ignore the header if it is malformed
-				System.out.println("Error parsing date, ignoring If-Modified-Since header " + e.getMessage());
-			}
-		}
-
-		if (headers.containsKey(AUTHORIZATION_HEADER)) {
-			String authHeader = headers.get(AUTHORIZATION_HEADER);
-			String[] authParts = authHeader.split(" ");
-			if (authParts.length == 2 && authParts[0].equals("Basic")) {
-				credentials = authParts[1];
-			}
-		}
-
-		if (headers.containsKey(ACCEPT_HEADER)) {
-			String acceptHeader = headers.get(ACCEPT_HEADER);
-			// Create a list of accepted mime types
-			String[] acceptParts = acceptHeader.split(",");
-			for (String acceptPart : acceptParts) {
-				String[] acceptPartParts = acceptPart.split(";");
-				if (acceptPartParts[0].trim().equals("*/*")) {
-					acceptedMimeTypes.clear();
-					break;
-				} else {
-					acceptedMimeTypes.add(acceptPartParts[0].trim());
+				if (bodyStartIndex < requestString.length()) {
+					bodyBuilder.append(requestString.substring(bodyStartIndex));
 				}
+
+				int remainingBytes = contentLength - bodyBuilder.length();
+
+				ByteBuffer bodyBuffer = ByteBuffer.allocate(remainingBytes);
+
+				while (remainingBytes > 0) {
+					bytesRead = channel.read(bodyBuffer);
+					if (bytesRead == -1) {
+						return null;
+					}
+					remainingBytes -= bytesRead;
+					if (bytesRead > 0) {
+						bodyBuffer.flip();
+						bodyBuilder.append(StandardCharsets.UTF_8.decode(bodyBuffer).toString());
+						bodyBuffer.clear();
+					}
+				}
+				body = bodyBuilder.toString();
 			}
 		}
+
+		// if (headers.containsKey(HOST_HEADER)) {
+		// String hostHeader = headers.get(HOST_HEADER);
+		// String[] hostParts = hostHeader.split(":");
+		// String serverName = hostParts[0];
+		// if (virtualHostMap.containsKey(serverName)) {
+		// rootDirectory = virtualHostMap.get(serverName);
+		// }
+		// }
+
+		// if (headers.containsKey(USER_AGENT_HEADER)) {
+		// String userAgentHeader = headers.get(USER_AGENT_HEADER);
+		// maybeSetMobileRequest(userAgentHeader);
+		// }
+
+		// if (headers.containsKey(IF_MODIFIED_SINCE_HEADER)) {
+		// SimpleDateFormat format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss
+		// zzz", Locale.US);
+		// format.setTimeZone(TimeZone.getTimeZone("GMT"));
+		// try {
+		// ifModifiedSinceDate = format.parse(headers.get(IF_MODIFIED_SINCE_HEADER));
+		// } catch (Exception e) {
+		// // Ignore the header if it is malformed
+		// System.out.println("Error parsing date, ignoring If-Modified-Since header " +
+		// e.getMessage());
+		// }
+		// }
+
+		// if (headers.containsKey(AUTHORIZATION_HEADER)) {
+		// String authHeader = headers.get(AUTHORIZATION_HEADER);
+		// String[] authParts = authHeader.split(" ");
+		// if (authParts.length == 2 && authParts[0].equals("Basic")) {
+		// credentials = authParts[1];
+		// }
+		// }
+
+		// if (headers.containsKey(ACCEPT_HEADER)) {
+		// String acceptHeader = headers.get(ACCEPT_HEADER);
+		// // Create a list of accepted mime types
+		// String[] acceptParts = acceptHeader.split(",");
+		// for (String acceptPart : acceptParts) {
+		// String[] acceptPartParts = acceptPart.split(";");
+		// if (acceptPartParts[0].trim().equals("*/*")) {
+		// acceptedMimeTypes.clear();
+		// break;
+		// } else {
+		// acceptedMimeTypes.add(acceptPartParts[0].trim());
+		// }
+		// }
+		// }
 
 		// Map the request to a HttpRequest object
 		HttpRequest request = new HttpRequest();
@@ -310,45 +353,47 @@ public class HttpRequestHandler implements Runnable {
 		return setResponseContent(url, response, request);
 	}
 
-	@Override
-	public void run() {
-		try {
-			do {
-				HttpRequest request = constructRequest();
-				if (request == null) {
-					System.out.println("Null request");
-					continue;
-				}
-				// check if server is at capacity
-				if (HttpServer.activeTasks.getAndIncrement() >= HttpServer.MAX_CONCURRENT_REQUESTS) {
-					HttpServer.activeTasks.decrementAndGet();
-					HttpResponseSender.sendResponse(HttpResponse.notAvailable(), clientSocket.getOutputStream());
-					clientSocket.close();
-					return;
-				}
-				HttpResponse response = constructResponse(request);
-				try {
-					HttpResponseSender.sendResponse(response, clientSocket.getOutputStream());
-				} catch (IOException e) {
-					keepConnectionOpen = false;
-				}
-				if (!keepConnectionOpen) {
-					clientSocket.close();
-				}
-			} while (keepConnectionOpen && !clientSocket.isClosed());
-		} catch (SocketTimeoutException e) {
-			try {
-				clientSocket.close();
-			} catch (Exception ex) {
-				System.out.println("Error closing socket: " + ex.getMessage());
-			}
-		} catch (Exception e) {
-			System.out.println("Error handling request: " + e.getMessage());
-			keepConnectionOpen = false;
-		} finally {
-			HttpServer.activeTasks.decrementAndGet();
-		}
-	}
+	// @Override
+	// public void run() {
+	// try {
+	// do {
+	// HttpRequest request = constructRequest();
+	// if (request == null) {
+	// System.out.println("Null request");
+	// continue;
+	// }
+	// // check if server is at capacity
+	// if (HttpServer.activeTasks.getAndIncrement() >=
+	// HttpServer.MAX_CONCURRENT_REQUESTS) {
+	// HttpServer.activeTasks.decrementAndGet();
+	// HttpResponseSender.sendResponse(HttpResponse.notAvailable(),
+	// clientSocket.getOutputStream());
+	// clientSocket.close();
+	// return;
+	// }
+	// HttpResponse response = constructResponse(request);
+	// try {
+	// HttpResponseSender.sendResponse(response, clientSocket.getOutputStream());
+	// } catch (IOException e) {
+	// keepConnectionOpen = false;
+	// }
+	// if (!keepConnectionOpen) {
+	// clientSocket.close();
+	// }
+	// } while (keepConnectionOpen && !clientSocket.isClosed());
+	// } catch (SocketTimeoutException e) {
+	// try {
+	// clientSocket.close();
+	// } catch (Exception ex) {
+	// System.out.println("Error closing socket: " + ex.getMessage());
+	// }
+	// } catch (Exception e) {
+	// System.out.println("Error handling request: " + e.getMessage());
+	// keepConnectionOpen = false;
+	// } finally {
+	// HttpServer.activeTasks.decrementAndGet();
+	// }
+	// }
 
 	public void sendResponse(HttpResponse response) throws SocketException, IOException {
 		OutputStream out = clientSocket.getOutputStream();

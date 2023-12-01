@@ -42,45 +42,32 @@ public class HttpServer {
             System.exit(1);
         }
 
+        Dispatcher dispatcher = new Dispatcher();
         ServerSocketChannel serverSocketChannel = openServerChannel(serverConfig.getPort());
 
-        Selector selector = Selector.open();
-        serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
+        if (serverSocketChannel == null) {
+            System.out.println("Error opening server socket channel.");
+            System.exit(1);
+        }
 
-        // create cache
+        // // create management thread
+        // ManagementThread managementThread = new ManagementThread(serverState);
+        // managementThread.start();
+
         Cache cache = new Cache(serverConfig.getCacheSize());
 
-        // create management thread
-        ManagementThread managementThread = new ManagementThread(serverState);
-        managementThread.start();
+        serverSocketChannel.register(dispatcher.selector(), SelectionKey.OP_ACCEPT);
 
-        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        Thread dispatcherThread = new Thread(dispatcher);
+        dispatcherThread.start();
 
-        while (serverState.isAcceptingRequests()) {
-            // check to see if any events
-            selector.select(CLIENT_TIMEOUT);
-
-            Iterator<SelectionKey> selectedKeys = selector.selectedKeys().iterator();
-            while (selectedKeys.hasNext()) {
-                SelectionKey key = selectedKeys.next();
-                selectedKeys.remove();
-                if (key.isAcceptable()) {
-                    SocketChannel clientSocketChannel = serverSocketChannel.accept();
-                    clientSocketChannel.configureBlocking(false);
-                    clientSocketChannel.register(selector, SelectionKey.OP_READ);
-                } else if (key.isReadable()) {
-                    SocketChannel clientSocketChannel = (SocketChannel) key.channel();
-                    executorService.submit(new RequestHandler(clientSocketChannel, cache, serverState));
-                }
-            }
-
-        }
-        executorService.shutdown();
-        System.out.println("Waiting for all requests to finish...");
-        while (!executorService.isTerminated()) {
-            continue;
-        }
-        System.out.println("All tasks finished.");
-        serverSocket.close();
+        // create cache
+        // executorService.shutdown();
+        // System.out.println("Waiting for all requests to finish...");
+        // while (!executorService.isTerminated()) {
+        // continue;
+        // }
+        // System.out.println("All tasks finished.");
+        // serverSocket.close();
     }
 }

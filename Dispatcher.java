@@ -1,5 +1,6 @@
 import java.nio.channels.*;
 import java.io.IOException;
+import java.net.Socket;
 import java.util.*; // for Set and Iterator
 
 public class Dispatcher implements Runnable {
@@ -40,28 +41,21 @@ public class Dispatcher implements Runnable {
 
 			// iterate over all events
 			while (iterator.hasNext()) {
-
 				SelectionKey key = (SelectionKey) iterator.next();
 				iterator.remove();
-
 				try {
-					if (key.isAcceptable()) { // a new connection is ready to be
-						SocketChannel clientSocketChannel = serverSocketChannel.accept();
-
-
-						IAcceptHandler aH = (IAcceptHandler) key.attachment();
-						aH.handleAccept(key);
+					if (key.isAcceptable()) {
+						ServerSocketChannel server = (ServerSocketChannel) key.channel();
+						SocketChannel client = server.accept();
+						client.configureBlocking(false);
+						client.register(selector, SelectionKey.OP_READ);
 					} // end of isAcceptable
-
-					if (key.isReadable() || key.isWritable()) {
-						IReadWriteHandler rwH = (IReadWriteHandler) key.attachment();
-							rwH.handleRead(key);
-						} // end of if isReadable
-
-						if (key.isWritable()) {
-							rwH.handleWrite(key);
-						} // end of if isWritable
-					} // end of readwrite
+					else if (key.isReadable()) {
+						SocketChannel channel = (SocketChannel) key.channel();
+						HttpRequest request = HttpRequestHandler.constructRequest(channel);
+						// Print the request
+						System.out.println(request);
+					}
 				} catch (IOException ex) {
 					key.cancel();
 					try {
@@ -70,9 +64,7 @@ public class Dispatcher implements Runnable {
 					} catch (IOException cex) {
 					}
 				} // end of catch
-
 			} // end of while (iterator.hasNext()) {
-
 		} // end of while (true)
-} // end of run
+	} // end of run
 }

@@ -7,6 +7,19 @@ public class HttpRequest {
     private Map<String, String> headers = new HashMap<>();
     private String body;
 
+    // toString() method
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Request: " + method + " " + path + " " + version + "\n");
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            sb.append(entry.getKey() + ": " + entry.getValue() + "\n");
+        }
+        sb.append("\n");
+        sb.append(body);
+        return sb.toString();
+    }
+
     public void setMethod(String method) {
         this.method = method;
     }
