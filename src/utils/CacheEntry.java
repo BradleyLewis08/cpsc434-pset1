@@ -1,3 +1,4 @@
+package utils;
 public class CacheEntry {
 	private byte[] content;
 	private long timeAdded;

@@ -1,4 +1,7 @@
+package server;
 import java.util.*;
+
+import server.ServerState;
 
 public class ManagementThread extends Thread {
 

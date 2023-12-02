@@ -1,3 +1,4 @@
+package configs;
 import java.util.*;
 
 public class ServerConfig {

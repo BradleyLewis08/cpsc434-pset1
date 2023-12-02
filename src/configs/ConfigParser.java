@@ -1,10 +1,5 @@
+package configs;
 import java.io.*;
-
-class InvalidConfigException extends Exception {
-	public InvalidConfigException(String message) {
-		super(message);
-	}
-}
 
 class VirtualHost {
 	String serverName;
@@ -78,3 +73,9 @@ public class ConfigParser {
 		}
 	}
 }
+
+// class InvalidConfigException extends Exception {
+// 	public InvalidConfigException(String message) {
+// 		super(message);
+// 	}
+// }
