@@ -2,6 +2,16 @@
 
 ### Contributors: Bradley Lewis and Alex Shin
 
+## Rubric items
+
+1. Caching - our server uses a caching mechanism to ensure that content from files that have not been modified and/or hae been fetched recently does not need to be loaded from disk. This is implemented in `Cache.java` and `CacheEntry.java`. Of particular note is line 317 in HttpRequestHandler.java, which checks the cache for a file before attempting to load it from disk.
+
+2. Chunked Responses - our server supports chunked responses, as can be seen in `HTTPResponse.java` on line 64. The server will automatically chunk responses if the content length is not specified in the response headers. As seen on line 428 of HttpRequestHandler.java (and the corresponding definition of sendChunkedResponse on line 391) the server will chunk responses if specified in hte headers.
+
+3. Heartbeat monitoring - our server supports heartbeat monitoring. If a GET request is made to the '/load' endpoint, this ia handled on line 364 of HttpRequestHandler.java. An instance of the ServerState class is passed to every Dispatcher, which maintains a list of active tasks as well as defining a maximum number of concurrent tasks. The '/load' handler will then use this instance to determine the current load on the server, and return the appropriate response.
+
+4. Async I/O using select structures - our server uses the asymmetric design, where the main server thread listens for incoming connections and distributes these connections to listening Dispatchers. Each Dispatcher runs a Select loop that will listen for incoming data on each of the client SocketChannels it has been assigned to, reading and writing data whenever it is available. This is implemented in `Dispatcher.java`. We also implement a management terminal in ManagementThread.java, which allows an operator to gracefully shut down the server. This is implemented using a shared instance of ServerState, which is passed to each Dispatcher. The management terminal will then unset a flag in the ServerState instance, which will be checked by each Dispatcher on each iteration of the select loop. If the flag is unset, the Dispatcher will gracefully shut down.
+
 ### Running the server
 
 The main server resides in `Server.java`. To run the server, navigate to the `HTTPServer` directory and run:
@@ -18,31 +28,31 @@ Below we outline the files within the project repository, as well as an overview
 
 `/home`: A toy directory that stores files that are obtainable through GET requests to our server, provided that its absolute path on the machine running the server is provided as a virtual host in the provided configuration file.
 
-`Cache.java`: Our server side caching implementation that will return cached file data if available and up to date.
+`/src/handlers`:
 
-`CacheEntry.java`: A simple class to represent a single entry in the server side cache.
+`HttpRequest.java`: Represents a standard HTTP request.
+
+`HTTPRequestHandler.java`: Stateless handler that allows for the reading and parsing of HTTP requests, as well as the sending of HTTP responses back to clients.
+
+`/src/configs`:
 
 `ConfigParser.java`: Parses and creates a hashmap from the configuration file provided, used by the server for virtual host mapping.
 
 `HTAccessParser`: Parses .htaccess files and determines whether a client side request has the appropriate authorization headers and credentials set to fetch files from within directories with a `.htaccess` file.
 
-`.httpd.config`: A sample configuration file.
+`/src/network`:
 
-`HttpRequest.java`: Represents a standard HTTP request.
+`Dispatcher.java`: Class that implements the Dispatcher pattern, allowing for the asynchronous handling of multiple client connections.
 
-`HTTPRequestHandler.java`: Main driver class that runs in a Thread to process incoming client requests.
+`HttpResponse.java`: Represents a standard HTTP response.
 
-`HTTPResponse.java`: Represents a standard HTTP response.
+`HttpResponseSender.java`: Class that handles the sending of HTTP responses back to clients.
 
-`HTTPServer.java`: Server driver class that creates a HTTP server to listen on the port specified in the configuration file.
+`/src/server`:
 
 `ManagementThread.java`: Class that implements the Management terminal as described above.
 
-`MimeTypeResolver.java`: Resolves file extensions (e.g .jpg, .png) to their corresponding MIMETypes for HTTP responses and requests.
-
-`ServerConfig.java`: Class that represents configuration variables read in from the configuration file.
-
-`ServerState.java`: Class that represents the current state of the server.
+`HttpServer.java`: Server driver class that creates a HTTP server to listen on the port specified in the configuration file. Main thread will hand off incoming connections to a Dispatcher, which will handle the connection asynchronously.
 
 ## Part 1.C Answers
 

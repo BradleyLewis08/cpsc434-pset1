@@ -13,7 +13,7 @@ credentials=$(echo -n "$username:$password" | base64)
 # Making a GET request using curl with the Authorization header and printing the response
 echo "Sending GET request to $url with username: $username and password: $password"
 
-response=$(curl -si -H "Connection: keep-alive" $url)
+response=$(curl -si $url)
 
 # Print the response
 echo "Response from the server:"
